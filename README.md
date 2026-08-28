@@ -13,11 +13,12 @@ SqueezeBar provides effortless 1-drop batch media compression, dual-zone quick/s
 ---
 
 ## Features
-- **Dual-Zone Interface**: Instant Quick Drop + Custom Staged Queue with per-file sliders.
-- **1:1 Multi-Deck Controls**: Continuous quality sliders, target size automation (25MB Discord, 10MB Email, Custom MB), resolution scaling, framerate selection (FPS), and format conversion.
-- **Individual Per-File Customization**: Custom settings per queued media item before squeezing.
-- **macOS Floating Drop Ball**: Edge-docking magnetic liquid glass basket with Apple bezel edge-tab morphing and proximity cursor detection.
-- **Zero Telemetry & 100% Local**: All processing executes purely on-device with privacy-first metadata stripping.
+
+- **1-Drop Batch Optimization**: Instant Quick Drop or queue and customize files individually.
+- **Smart Target Sizes**: Compression presets for Discord (25MB/50MB), Email (10MB), or Custom MB limits.
+- **Full Quality & Format Controls**: Adjust quality, resolution scaling, framerate (FPS), and convert formats.
+- **Desktop Floating Drop Ball (macOS)**: Edge-docking drop zone for quick drag-and-drop.
+- **100% Local & Private**: On-device hardware-accelerated processing with zero telemetry.
 
 ---
 
