@@ -140,6 +140,20 @@ public partial class MainWindow : Window
         StagedQueueBorder.AddHandler(DragDrop.DragOverEvent, OnDragOver);
 
         EmptyQueueHint.IsVisible = _state.StagedQueue.Count == 0;
+
+        // Prevent Wine / CrossOver from maximizing into a new macOS Fullscreen Space
+        PropertyChanged += (s, e) =>
+        {
+            if (e.Property == Window.WindowStateProperty && WindowState != WindowState.Normal)
+            {
+                WindowState = WindowState.Normal;
+            }
+        };
+
+        AddHandler(InputElement.DoubleTappedEvent, (s, e) =>
+        {
+            e.Handled = true;
+        }, RoutingStrategies.Bubble);
     }
 
     // ── Tab Navigation ──
@@ -164,10 +178,26 @@ public partial class MainWindow : Window
     }
 
     // ── Category Tile Selection (Toggle Drawer) ──
-    private void SelectImagesCategory_PointerPressed(object? sender, PointerPressedEventArgs e) => ToggleCategory(MediaCategory.Images);
-    private void SelectVideoCategory_PointerPressed(object? sender, PointerPressedEventArgs e) => ToggleCategory(MediaCategory.Video);
-    private void SelectAudioCategory_PointerPressed(object? sender, PointerPressedEventArgs e) => ToggleCategory(MediaCategory.Audio);
-    private void SelectPdfCategory_PointerPressed(object? sender, PointerPressedEventArgs e) => ToggleCategory(MediaCategory.Pdf);
+    private void SelectImagesCategory_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        e.Handled = true;
+        ToggleCategory(MediaCategory.Images);
+    }
+    private void SelectVideoCategory_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        e.Handled = true;
+        ToggleCategory(MediaCategory.Video);
+    }
+    private void SelectAudioCategory_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        e.Handled = true;
+        ToggleCategory(MediaCategory.Audio);
+    }
+    private void SelectPdfCategory_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        e.Handled = true;
+        ToggleCategory(MediaCategory.Pdf);
+    }
 
     private void CloseDrawer_Click(object? sender, RoutedEventArgs e)
     {
