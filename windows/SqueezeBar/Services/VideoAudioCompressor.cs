@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -14,6 +15,13 @@ public static class VideoAudioCompressor
 {
     private static readonly Regex DurationRegex = new(@"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", RegexOptions.Compiled);
     private static readonly Regex TimeProgressRegex = new(@"time=(\d+):(\d+):(\d+\.?\d*)", RegexOptions.Compiled);
+
+    private struct EncoderCandidate
+    {
+        public string Name;
+        public string Codec;
+        public bool IsHardware;
+    }
 
     public static async Task<double> ProbeDurationAsync(string ffmpeg, string inputPath, CancellationToken ct = default)
     {
@@ -86,6 +94,79 @@ public static class VideoAudioCompressor
                 counter++;
             }
 
+            // Animated GIF processing
+            if (config.VideoCodec == VideoCodecPreference.AnimatedGIF)
+            {
+                int fps = config.VideoFramerate > 0 ? config.VideoFramerate : 15;
+                int scaleWidth = (int)(1280 * config.VideoResolutionScale);
+
+                var result = await Cli.Wrap(ffmpeg)
+                    .WithArguments(args =>
+                    {
+                        args.Add("-nostdin")
+                            .Add("-y")
+                            .Add("-hide_banner")
+                            .Add("-i")
+                            .Add(inputPath)
+                            .Add("-vf")
+                            .Add($"fps={fps},scale={scaleWidth}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse");
+
+                        if (config.StripMetadata) args.Add("-map_metadata").Add("-1");
+                        args.Add(outputPath);
+                    })
+                    .WithValidation(CommandResultValidation.None)
+                    .ExecuteAsync(cancellationToken);
+
+                progress?.Report(1.0);
+                if (File.Exists(outputPath) && new FileInfo(outputPath).Length > 1024)
+                {
+                    return new CompressionResult
+                    {
+                        OriginalPath = inputPath,
+                        OutputPath = outputPath,
+                        OriginalSize = originalSize,
+                        CompressedSize = new FileInfo(outputPath).Length,
+                        MediaType = MediaType.Video
+                    };
+                }
+                return null;
+            }
+
+            // Target size limits calculation
+            long? targetBytes = config.TargetSizeMode.GetTargetBytes(config.CustomTargetSizeMB);
+            bool hasTargetLimit = targetBytes.HasValue && targetBytes.Value > 0 &&
+                                  config.TargetSizeMode != TargetSizeMode.Off &&
+                                  config.TargetSizeMode != TargetSizeMode.Manual;
+
+            int videoK = 0;
+            if (hasTargetLimit && duration > 0.5)
+            {
+                double totalBits = targetBytes!.Value * 8.0 * 0.93;
+                int audioK = config.VideoRemoveAudio ? 0 : 96;
+                videoK = Math.Max(80, (int)((totalBits / duration / 1000.0) - audioK));
+            }
+
+            int crf = (int)(28 - (config.VideoQuality * 10)); // 18 to 28
+            int cq = Math.Clamp((int)(30 - (config.VideoQuality * 12)), 16, 32);
+
+            // Encoder candidates prioritized by hardware acceleration:
+            // 1. NVIDIA NVENC (GTX / RTX) -> 2. AMD AMF -> 3. Intel QSV -> 4. CPU (libx265 / libx264)
+            var candidates = new List<EncoderCandidate>();
+            if (config.VideoCodec == VideoCodecPreference.HEVC)
+            {
+                candidates.Add(new EncoderCandidate { Name = "NVIDIA NVENC", Codec = "hevc_nvenc", IsHardware = true });
+                candidates.Add(new EncoderCandidate { Name = "AMD AMF", Codec = "hevc_amf", IsHardware = true });
+                candidates.Add(new EncoderCandidate { Name = "Intel QSV", Codec = "hevc_qsv", IsHardware = true });
+                candidates.Add(new EncoderCandidate { Name = "CPU (libx265)", Codec = "libx265", IsHardware = false });
+            }
+            else
+            {
+                candidates.Add(new EncoderCandidate { Name = "NVIDIA NVENC", Codec = "h264_nvenc", IsHardware = true });
+                candidates.Add(new EncoderCandidate { Name = "AMD AMF", Codec = "h264_amf", IsHardware = true });
+                candidates.Add(new EncoderCandidate { Name = "Intel QSV", Codec = "h264_qsv", IsHardware = true });
+                candidates.Add(new EncoderCandidate { Name = "CPU (libx264)", Codec = "libx264", IsHardware = false });
+            }
+
             var stdErrPipe = PipeTarget.ToDelegate(line =>
             {
                 if (duration > 0)
@@ -103,136 +184,175 @@ public static class VideoAudioCompressor
                 }
             });
 
-            // Execute FFmpeg using CliWrap ArgumentsBuilder (100% Space & Unicode Safe)
-            await Cli.Wrap(ffmpeg)
-                .WithArguments(args =>
-                {
-                    args.Add("-nostdin")
-                        .Add("-y")
-                        .Add("-hide_banner")
-                        .Add("-i")
-                        .Add(inputPath);
-
-                    if (config.VideoCodec == VideoCodecPreference.AnimatedGIF)
-                    {
-                        int fps = config.VideoFramerate > 0 ? config.VideoFramerate : 15;
-                        int scaleWidth = (int)(1280 * config.VideoResolutionScale);
-                        args.Add("-vf")
-                            .Add($"fps={fps},scale={scaleWidth}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse");
-                    }
-                    else
-                    {
-                        long? targetBytes = config.TargetSizeMode.GetTargetBytes(config.CustomTargetSizeMB);
-                        bool hasTargetLimit = targetBytes.HasValue && targetBytes.Value > 0 &&
-                                              config.TargetSizeMode != TargetSizeMode.Off &&
-                                              config.TargetSizeMode != TargetSizeMode.Manual;
-
-                        if (hasTargetLimit && duration > 0.5)
-                        {
-                            double totalBits = targetBytes!.Value * 8.0 * 0.93;
-                            int audioK = config.VideoRemoveAudio ? 0 : 96;
-                            int videoK = Math.Max(80, (int)((totalBits / duration / 1000.0) - audioK));
-
-                            if (config.VideoCodec == VideoCodecPreference.HEVC)
-                            {
-                                args.Add("-c:v").Add("libx265")
-                                    .Add("-b:v").Add($"{videoK}k")
-                                    .Add("-maxrate").Add($"{(int)(videoK * 1.3)}k")
-                                    .Add("-bufsize").Add($"{(int)(videoK * 2)}k")
-                                    .Add("-preset").Add("fast")
-                                    .Add("-tag:v").Add("hvc1")
-                                    .Add("-pix_fmt").Add("yuv420p");
-                            }
-                            else
-                            {
-                                args.Add("-c:v").Add("libx264")
-                                    .Add("-b:v").Add($"{videoK}k")
-                                    .Add("-maxrate").Add($"{(int)(videoK * 1.3)}k")
-                                    .Add("-bufsize").Add($"{(int)(videoK * 2)}k")
-                                    .Add("-preset").Add("fast")
-                                    .Add("-pix_fmt").Add("yuv420p");
-                            }
-                        }
-                        else
-                        {
-                            int crf = (int)(28 - (config.VideoQuality * 10));
-                            if (config.VideoCodec == VideoCodecPreference.HEVC)
-                            {
-                                args.Add("-c:v").Add("libx265")
-                                    .Add("-crf").Add(crf.ToString())
-                                    .Add("-preset").Add("fast")
-                                    .Add("-tag:v").Add("hvc1")
-                                    .Add("-pix_fmt").Add("yuv420p");
-                            }
-                            else
-                            {
-                                args.Add("-c:v").Add("libx264")
-                                    .Add("-crf").Add(crf.ToString())
-                                    .Add("-preset").Add("fast")
-                                    .Add("-pix_fmt").Add("yuv420p");
-                            }
-                        }
-
-                        if (config.VideoFramerate > 0)
-                        {
-                            args.Add("-r").Add(config.VideoFramerate.ToString());
-                        }
-
-                        if (config.VideoResolutionScale < 0.99)
-                        {
-                            args.Add("-vf").Add($"scale=trunc(iw*{config.VideoResolutionScale}/2)*2:trunc(ih*{config.VideoResolutionScale}/2)*2");
-                        }
-
-                        if (config.VideoRemoveAudio)
-                        {
-                            args.Add("-an");
-                        }
-                        else
-                        {
-                            string audioBitrate = config.AudioBitrate switch
-                            {
-                                AudioBitratePreference.K64 => "64k",
-                                AudioBitratePreference.K128 => "128k",
-                                AudioBitratePreference.K256 => "256k",
-                                AudioBitratePreference.K320 => "320k",
-                                _ => "128k"
-                            };
-                            args.Add("-c:a").Add("aac").Add("-b:a").Add(audioBitrate);
-                        }
-
-                        args.Add("-movflags").Add("+faststart");
-                    }
-
-                    if (config.StripMetadata)
-                    {
-                        args.Add("-map_metadata").Add("-1");
-                    }
-
-                    args.Add(outputPath);
-                })
-                .WithStandardErrorPipe(stdErrPipe)
-                .WithValidation(CommandResultValidation.None)
-                .ExecuteAsync(cancellationToken);
-
-            progress?.Report(1.0);
-
-            if (File.Exists(outputPath))
+            // Try hardware encoders first with automatic graceful CPU fallback
+            foreach (var cand in candidates)
             {
-                var outFile = new FileInfo(outputPath);
-                if (outFile.Length > 1024)
+                try
                 {
-                    return new CompressionResult
+                    if (File.Exists(outputPath)) File.Delete(outputPath);
+
+                    var cmd = Cli.Wrap(ffmpeg)
+                        .WithArguments(args =>
+                        {
+                            args.Add("-nostdin")
+                                .Add("-y")
+                                .Add("-hide_banner");
+
+                            // Hardware acceleration decode option
+                            if (cand.IsHardware && cand.Codec.Contains("nvenc"))
+                            {
+                                args.Add("-hwaccel").Add("cuda");
+                            }
+
+                            args.Add("-i").Add(inputPath);
+
+                            // Apply Video Codec & Quality/Bitrate
+                            if (cand.Codec.Contains("nvenc"))
+                            {
+                                args.Add("-c:v").Add(cand.Codec)
+                                    .Add("-preset").Add("p4");
+
+                                if (hasTargetLimit && videoK > 0)
+                                {
+                                    args.Add("-b:v").Add($"{videoK}k")
+                                        .Add("-maxrate").Add($"{(int)(videoK * 1.3)}k")
+                                        .Add("-bufsize").Add($"{(int)(videoK * 2)}k");
+                                }
+                                else
+                                {
+                                    args.Add("-rc:v").Add("vbr")
+                                        .Add("-cq").Add(cq.ToString())
+                                        .Add("-b:v").Add("0");
+                                }
+                            }
+                            else if (cand.Codec.Contains("amf"))
+                            {
+                                args.Add("-c:v").Add(cand.Codec)
+                                    .Add("-quality").Add("speed");
+
+                                if (hasTargetLimit && videoK > 0)
+                                {
+                                    args.Add("-b:v").Add($"{videoK}k")
+                                        .Add("-maxrate").Add($"{(int)(videoK * 1.3)}k")
+                                        .Add("-bufsize").Add($"{(int)(videoK * 2)}k");
+                                }
+                                else
+                                {
+                                    args.Add("-rc").Add("cqp")
+                                        .Add("-qp_i").Add(cq.ToString())
+                                        .Add("-qp_p").Add(cq.ToString());
+                                }
+                            }
+                            else if (cand.Codec.Contains("qsv"))
+                            {
+                                args.Add("-c:v").Add(cand.Codec)
+                                    .Add("-preset").Add("fast");
+
+                                if (hasTargetLimit && videoK > 0)
+                                {
+                                    args.Add("-b:v").Add($"{videoK}k")
+                                        .Add("-maxrate").Add($"{(int)(videoK * 1.3)}k")
+                                        .Add("-bufsize").Add($"{(int)(videoK * 2)}k");
+                                }
+                                else
+                                {
+                                    args.Add("-global_quality").Add(cq.ToString());
+                                }
+                            }
+                            else
+                            {
+                                // CPU fallback
+                                args.Add("-c:v").Add(cand.Codec)
+                                    .Add("-preset").Add("fast");
+
+                                if (hasTargetLimit && videoK > 0)
+                                {
+                                    args.Add("-b:v").Add($"{videoK}k")
+                                        .Add("-maxrate").Add($"{(int)(videoK * 1.3)}k")
+                                        .Add("-bufsize").Add($"{(int)(videoK * 2)}k");
+                                }
+                                else
+                                {
+                                    args.Add("-crf").Add(crf.ToString());
+                                }
+                            }
+
+                            // Tag & Pixel format
+                            if (cand.Codec.Contains("hevc") || cand.Codec == "libx265")
+                            {
+                                args.Add("-tag:v").Add("hvc1");
+                            }
+                            args.Add("-pix_fmt").Add("yuv420p");
+
+                            // Framerate
+                            if (config.VideoFramerate > 0)
+                            {
+                                args.Add("-r").Add(config.VideoFramerate.ToString());
+                            }
+
+                            // Resolution Scaling
+                            if (config.VideoResolutionScale < 0.99)
+                            {
+                                args.Add("-vf").Add($"scale=trunc(iw*{config.VideoResolutionScale}/2)*2:trunc(ih*{config.VideoResolutionScale}/2)*2");
+                            }
+
+                            // Audio Configuration
+                            if (config.VideoRemoveAudio)
+                            {
+                                args.Add("-an");
+                            }
+                            else
+                            {
+                                string audioBitrate = config.AudioBitrate switch
+                                {
+                                    AudioBitratePreference.K64 => "64k",
+                                    AudioBitratePreference.K128 => "128k",
+                                    AudioBitratePreference.K256 => "256k",
+                                    AudioBitratePreference.K320 => "320k",
+                                    _ => "128k"
+                                };
+                                args.Add("-c:a").Add("aac").Add("-b:a").Add(audioBitrate);
+                            }
+
+                            // Streaming faststart
+                            args.Add("-movflags").Add("+faststart");
+
+                            if (config.StripMetadata)
+                            {
+                                args.Add("-map_metadata").Add("-1");
+                            }
+
+                            args.Add(outputPath);
+                        })
+                        .WithStandardErrorPipe(stdErrPipe)
+                        .WithValidation(CommandResultValidation.None);
+
+                    var execResult = await cmd.ExecuteAsync(cancellationToken);
+
+                    if (File.Exists(outputPath))
                     {
-                        OriginalPath = inputPath,
-                        OutputPath = outputPath,
-                        OriginalSize = originalSize,
-                        CompressedSize = outFile.Length,
-                        MediaType = MediaType.Video
-                    };
+                        var outFile = new FileInfo(outputPath);
+                        if (outFile.Length > 1024)
+                        {
+                            progress?.Report(1.0);
+                            return new CompressionResult
+                            {
+                                OriginalPath = inputPath,
+                                OutputPath = outputPath,
+                                OriginalSize = originalSize,
+                                CompressedSize = outFile.Length,
+                                MediaType = MediaType.Video
+                            };
+                        }
+                    }
                 }
-                else
+                catch (OperationCanceledException)
                 {
-                    try { File.Delete(outputPath); } catch { }
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[VideoAudioCompressor] Encoder {cand.Name} failed: {ex.Message}");
                 }
             }
 
