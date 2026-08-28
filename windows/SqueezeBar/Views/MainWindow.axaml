@@ -95,6 +95,72 @@
         <Style Selector="CheckBox:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Foreground" Value="#E8E8ED"/>
         </Style>
+
+        <!-- Fluid Interactive Button Dynamics & Transitions -->
+        <Style Selector="Button">
+            <Setter Property="RenderTransform" Value="none"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.025)"/>
+        </Style>
+        <Style Selector="Button:pressed">
+            <Setter Property="RenderTransform" Value="scale(0.96)"/>
+        </Style>
+
+        <!-- Category Tile Hover & Fluid Elevation -->
+        <Style Selector="Border.CategoryTile">
+            <Setter Property="RenderTransform" Value="none"/>
+            <Setter Property="BoxShadow" Value="0 2 8 0 #20000000"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.CategoryTile:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.02)"/>
+            <Setter Property="BoxShadow" Value="0 4 14 0 #35000000"/>
+        </Style>
+
+        <!-- Glassmorphism Card Transition & Depth -->
+        <Style Selector="Border.GlassCard">
+            <Setter Property="BoxShadow" Value="0 4 16 0 #25000000"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.22" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.22" Easing="CubicEaseOut"/>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- Drop Zone Pulse / Hover -->
+        <Style Selector="Border.DropZone">
+            <Setter Property="RenderTransform" Value="none"/>
+            <Setter Property="BoxShadow" Value="0 2 10 0 #20000000"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.DropZone:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.01)"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BoxShadow" Value="0 4 16 0 #30000000"/>
+        </Style>
     </Window.Styles>
 
     <!-- All colors are pre-composited solid opaques for Wine/CrossOver compatibility -->
@@ -146,7 +212,7 @@
                     <!-- 4 Live Format Profile Tiles -->
                     <Grid ColumnDefinitions="*,*,*,*">
                         <!-- Images -->
-                        <Border Grid.Column="0" x:Name="ImagesTileBorder" Margin="0,0,3,0" Background="#222226" CornerRadius="9" Padding="9,9" MinHeight="64" BorderBrush="#2D2D32" BorderThickness="0.5" Cursor="Hand" PointerPressed="SelectImagesCategory_PointerPressed">
+                        <Border Grid.Column="0" x:Name="ImagesTileBorder" Classes="CategoryTile" Margin="0,0,3,0" Background="#222226" CornerRadius="9" Padding="9,9" MinHeight="64" BorderBrush="#2D2D32" BorderThickness="0.5" Cursor="Hand" PointerPressed="SelectImagesCategory_PointerPressed">
                             <StackPanel Spacing="3">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="ImagesTitleText" Text="Images" FontSize="9.5" FontWeight="Bold" Foreground="#B0B0BE" FontFamily="Georgia, 'Times New Roman', serif"/>
@@ -158,7 +224,7 @@
                         </Border>
 
                         <!-- Video -->
-                        <Border Grid.Column="1" x:Name="VideoTileBorder" Margin="2,0,2,0" Background="#222226" CornerRadius="9" Padding="9,9" MinHeight="64" BorderBrush="#2D2D32" BorderThickness="0.5" Cursor="Hand" PointerPressed="SelectVideoCategory_PointerPressed">
+                        <Border Grid.Column="1" x:Name="VideoTileBorder" Classes="CategoryTile" Margin="2,0,2,0" Background="#222226" CornerRadius="9" Padding="9,9" MinHeight="64" BorderBrush="#2D2D32" BorderThickness="0.5" Cursor="Hand" PointerPressed="SelectVideoCategory_PointerPressed">
                             <StackPanel Spacing="3">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="VideoTitleText" Text="Video" FontSize="9.5" FontWeight="Bold" Foreground="#B0B0BE" FontFamily="Georgia, 'Times New Roman', serif"/>
@@ -170,7 +236,7 @@
                         </Border>
 
                         <!-- Audio -->
-                        <Border Grid.Column="2" x:Name="AudioTileBorder" Margin="2,0,2,0" Background="#222226" CornerRadius="9" Padding="9,9" MinHeight="64" BorderBrush="#2D2D32" BorderThickness="0.5" Cursor="Hand" PointerPressed="SelectAudioCategory_PointerPressed">
+                        <Border Grid.Column="2" x:Name="AudioTileBorder" Classes="CategoryTile" Margin="2,0,2,0" Background="#222226" CornerRadius="9" Padding="9,9" MinHeight="64" BorderBrush="#2D2D32" BorderThickness="0.5" Cursor="Hand" PointerPressed="SelectAudioCategory_PointerPressed">
                             <StackPanel Spacing="3">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="AudioTitleText" Text="Audio" FontSize="9.5" FontWeight="Bold" Foreground="#B0B0BE" FontFamily="Georgia, 'Times New Roman', serif"/>
@@ -182,7 +248,7 @@
                         </Border>
 
                         <!-- PDF -->
-                        <Border Grid.Column="3" x:Name="PdfTileBorder" Margin="3,0,0,0" Background="#222226" CornerRadius="9" Padding="9,9" MinHeight="64" BorderBrush="#2D2D32" BorderThickness="0.5" Cursor="Hand" PointerPressed="SelectPdfCategory_PointerPressed">
+                        <Border Grid.Column="3" x:Name="PdfTileBorder" Classes="CategoryTile" Margin="3,0,0,0" Background="#222226" CornerRadius="9" Padding="9,9" MinHeight="64" BorderBrush="#2D2D32" BorderThickness="0.5" Cursor="Hand" PointerPressed="SelectPdfCategory_PointerPressed">
                             <StackPanel Spacing="3">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="PdfTitleText" Text="PDF" FontSize="9.5" FontWeight="Bold" Foreground="#B0B0BE" FontFamily="Georgia, 'Times New Roman', serif"/>
@@ -195,7 +261,7 @@
                     </Grid>
 
                     <!-- ── Collapsible Format Configuration Deck (1:1 macOS Parity) ── -->
-                    <Border x:Name="FormatDrawerBorder" Background="#1F1F23" CornerRadius="12" Padding="12" BorderBrush="#27272B" BorderThickness="0.5">
+                    <Border x:Name="FormatDrawerBorder" Classes="GlassCard" Background="#1F1F23" CornerRadius="12" Padding="12" BorderBrush="#27272B" BorderThickness="0.5">
                         <StackPanel Spacing="9">
 
                             <!-- Deck Header -->
@@ -410,6 +476,7 @@
 
                     <!-- Quick Squeeze Drop Zone -->
                     <Border x:Name="QuickDropBorder"
+                            Classes="DropZone"
                             Background="#1F1F23"
                             BorderBrush="#2D2D32"
                             BorderThickness="0.5"
@@ -430,7 +497,8 @@
                     </Border>
 
                     <!-- Staged Queue -->
-                    <Border Background="#1F1F23"
+                    <Border Classes="GlassCard"
+                            Background="#1F1F23"
                             BorderBrush="#27272B"
                             BorderThickness="0.5"
                             CornerRadius="10"
@@ -537,7 +605,7 @@
                 <StackPanel x:Name="SettingsTabPanel" Spacing="10" IsVisible="False">
 
                     <!-- Theme Accent Color — macOS Swatch Circles -->
-                    <Border Background="#1F1F23" CornerRadius="10" Padding="14" BorderBrush="#27272B" BorderThickness="0.5">
+                    <Border Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="14" BorderBrush="#27272B" BorderThickness="0.5">
                         <StackPanel Spacing="10">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="Theme Accent Color" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
@@ -561,7 +629,7 @@
                     </Border>
 
                     <!-- Background Darkness Mode -->
-                    <Border Background="#1F1F23" CornerRadius="10" Padding="14" BorderBrush="#27272B" BorderThickness="0.5">
+                    <Border Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="14" BorderBrush="#27272B" BorderThickness="0.5">
                         <StackPanel Spacing="10">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="Background Darkness" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
@@ -580,7 +648,7 @@
                     </Border>
 
                     <!-- Save Destination & Suffix -->
-                    <Border Background="#1F1F23" CornerRadius="10" Padding="14" BorderBrush="#27272B" BorderThickness="0.5">
+                    <Border Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="14" BorderBrush="#27272B" BorderThickness="0.5">
                         <StackPanel Spacing="8">
                             <TextBlock Text="Save Destination" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
                             <StackPanel Spacing="4">
@@ -593,7 +661,7 @@
                     </Border>
 
                     <!-- Auto-Squeeze Watch Folder -->
-                    <Border Background="#1F1F23" CornerRadius="10" Padding="14" BorderBrush="#27272B" BorderThickness="0.5">
+                    <Border Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="14" BorderBrush="#27272B" BorderThickness="0.5">
                         <StackPanel Spacing="7">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Text="Auto-Squeeze Watch Folder" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
