@@ -14,12 +14,22 @@ public class MediaCompressionEngine
 
     private static readonly HashSet<string> ImageExts = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".jpg", ".jpeg", ".png", ".webp", ".heic", ".bmp", ".avif", ".tiff"
+        ".jpg", ".jpeg", ".png", ".webp", ".heic", ".bmp", ".avif", ".tiff", ".ico"
     };
 
     private static readonly HashSet<string> VideoExts = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".gif"
+        ".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".gif", ".wmv", ".flv", ".ts"
+    };
+
+    private static readonly HashSet<string> AudioExts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".wma", ".aiff"
+    };
+
+    private static readonly HashSet<string> PdfExts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".pdf"
     };
 
     public MediaType ClassifyFile(string path)
@@ -27,6 +37,8 @@ public class MediaCompressionEngine
         string ext = Path.GetExtension(path);
         if (ImageExts.Contains(ext)) return MediaType.Image;
         if (VideoExts.Contains(ext)) return MediaType.Video;
+        if (AudioExts.Contains(ext)) return MediaType.Audio;
+        if (PdfExts.Contains(ext)) return MediaType.Pdf;
         return MediaType.Unsupported;
     }
 
@@ -60,6 +72,7 @@ public class MediaCompressionEngine
         {
             MediaType.Image => await ImageCompressor.CompressImageAsync(path, config, progress),
             MediaType.Video => await VideoAudioCompressor.CompressVideoAsync(path, config, progress),
+            MediaType.Audio => await VideoAudioCompressor.CompressAudioAsync(path, config, progress),
             _ => null
         };
     }

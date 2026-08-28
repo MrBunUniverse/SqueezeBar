@@ -474,6 +474,23 @@ public partial class MainWindow : Window
     }
 
     // ── Drag & Drop ──
+    private static string NormalizePath(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        string clean = raw.Trim().Trim('"', '\'');
+        if (clean.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Uri.TryCreate(clean, UriKind.Absolute, out var uri))
+                clean = uri.LocalPath;
+        }
+        try
+        {
+            clean = Uri.UnescapeDataString(clean);
+        }
+        catch { }
+        return clean;
+    }
+
     private static bool HasDropFiles(IDataObject data)
     {
         return data.Contains(DataFormats.Files) ||
@@ -494,26 +511,28 @@ public partial class MainWindow : Window
                 {
                     foreach (var f in files)
                     {
-                        var p = f.Path.LocalPath;
-                        if (!string.IsNullOrEmpty(p) && (File.Exists(p) || Directory.Exists(p)))
+                        string p = f.TryGetLocalPath() ?? f.Path.LocalPath;
+                        p = NormalizePath(p);
+                        if (!string.IsNullOrEmpty(p) && (File.Exists(p) || Directory.Exists(p)) && !list.Contains(p))
                             list.Add(p);
                     }
                 }
             }
 
-            if (list.Count == 0 && data.Contains(DataFormats.FileNames))
+            if (data.Contains(DataFormats.FileNames))
             {
                 if (data.Get(DataFormats.FileNames) is IEnumerable<string> fileNames)
                 {
                     foreach (var fn in fileNames)
                     {
-                        if (!string.IsNullOrEmpty(fn) && (File.Exists(fn) || Directory.Exists(fn)))
-                            list.Add(fn);
+                        string p = NormalizePath(fn);
+                        if (!string.IsNullOrEmpty(p) && (File.Exists(p) || Directory.Exists(p)) && !list.Contains(p))
+                            list.Add(p);
                     }
                 }
             }
 
-            if (list.Count == 0 && data.Contains(DataFormats.Text))
+            if (data.Contains(DataFormats.Text))
             {
                 var txt = data.GetText();
                 if (!string.IsNullOrWhiteSpace(txt))
@@ -521,16 +540,36 @@ public partial class MainWindow : Window
                     var lines = txt.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                     foreach (var line in lines)
                     {
-                        var clean = line.Trim().Trim('"', '\'');
-                        if (clean.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (Uri.TryCreate(clean, UriKind.Absolute, out var uri))
-                                clean = uri.LocalPath;
-                        }
-                        if (File.Exists(clean) || Directory.Exists(clean))
-                            list.Add(clean);
+                        string p = NormalizePath(line);
+                        if (!string.IsNullOrEmpty(p) && (File.Exists(p) || Directory.Exists(p)) && !list.Contains(p))
+                            list.Add(p);
                     }
                 }
+            }
+
+            // Fallback scan across all data formats
+            foreach (var format in data.GetDataFormats())
+            {
+                try
+                {
+                    var obj = data.Get(format);
+                    if (obj is IEnumerable<string> strEnum)
+                    {
+                        foreach (var s in strEnum)
+                        {
+                            string p = NormalizePath(s);
+                            if (!string.IsNullOrEmpty(p) && (File.Exists(p) || Directory.Exists(p)) && !list.Contains(p))
+                                list.Add(p);
+                        }
+                    }
+                    else if (obj is string str)
+                    {
+                        string p = NormalizePath(str);
+                        if (!string.IsNullOrEmpty(p) && (File.Exists(p) || Directory.Exists(p)) && !list.Contains(p))
+                            list.Add(p);
+                    }
+                }
+                catch { }
             }
         }
         catch (Exception ex)
@@ -568,35 +607,35 @@ public partial class MainWindow : Window
 
     private async void OnWindowDrop(object? sender, DragEventArgs e)
     {
-        // Fallback drop if dropped on empty space in window
-        if (sender == this)
+        e.Handled = true;
+        var files = ExtractDropFiles(e.Data);
+        if (files.Count > 0)
         {
-            var files = ExtractDropFiles(e.Data);
-            if (files.Count > 0)
-            {
-                e.Handled = true;
-                await _state.ProcessDroppedFilesImmediatelyAsync(files);
-            }
+            ActivityTab_Click(null, new RoutedEventArgs());
+            await _state.ProcessDroppedFilesImmediatelyAsync(files);
         }
     }
 
     private async void OnQuickDrop(object? sender, DragEventArgs e)
     {
+        e.Handled = true;
         var files = ExtractDropFiles(e.Data);
         if (files.Count > 0)
         {
-            e.Handled = true;
+            ActivityTab_Click(null, new RoutedEventArgs());
             await _state.ProcessDroppedFilesImmediatelyAsync(files);
         }
     }
 
     private void OnStagedDrop(object? sender, DragEventArgs e)
     {
+        e.Handled = true;
         var files = ExtractDropFiles(e.Data);
         if (files.Count > 0)
         {
-            e.Handled = true;
+            ActivityTab_Click(null, new RoutedEventArgs());
             _state.AddFilesToStagedQueue(files);
+            EmptyQueueHint.IsVisible = _state.StagedQueue.Count == 0;
         }
     }
 

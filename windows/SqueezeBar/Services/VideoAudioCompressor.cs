@@ -109,4 +109,71 @@ public static class VideoAudioCompressor
             return null;
         }
     }
+
+    public static async Task<CompressionResult?> CompressAudioAsync(
+        string inputPath,
+        CompressionConfiguration config,
+        IProgress<double>? progress = null)
+    {
+        try
+        {
+            if (!File.Exists(inputPath)) return null;
+
+            progress?.Report(0.1);
+            var fileInfo = new FileInfo(inputPath);
+            long originalSize = fileInfo.Length;
+
+            string dir = Path.GetDirectoryName(inputPath) ?? "";
+            string nameWithoutExt = Path.GetFileNameWithoutExtension(inputPath);
+            string targetExt = ".m4a";
+
+            string outputPath = Path.Combine(dir, $"{nameWithoutExt}{config.OutputSuffix}{targetExt}");
+            int counter = 1;
+            while (File.Exists(outputPath))
+            {
+                outputPath = Path.Combine(dir, $"{nameWithoutExt}{config.OutputSuffix}_{counter}{targetExt}");
+                counter++;
+            }
+
+            string bitrate = config.AudioBitrate switch
+            {
+                AudioBitratePreference.K64 => "64k",
+                AudioBitratePreference.K128 => "128k",
+                AudioBitratePreference.K256 => "256k",
+                AudioBitratePreference.K320 => "320k",
+                _ => "192k"
+            };
+
+            var args = $"-y -i \"{inputPath}\" -c:a aac -b:a {bitrate} \"{outputPath}\"";
+
+            progress?.Report(0.3);
+
+            var result = await Cli.Wrap(FfmpegPath)
+                .WithArguments(args)
+                .WithValidation(CommandResultValidation.None)
+                .ExecuteAsync();
+
+            progress?.Report(1.0);
+
+            if (File.Exists(outputPath))
+            {
+                var outFile = new FileInfo(outputPath);
+                return new CompressionResult
+                {
+                    OriginalPath = inputPath,
+                    OutputPath = outputPath,
+                    OriginalSize = originalSize,
+                    CompressedSize = outFile.Length,
+                    MediaType = MediaType.Audio
+                };
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[VideoAudioCompressor Audio] Error: {ex.Message}");
+            return null;
+        }
+    }
 }
