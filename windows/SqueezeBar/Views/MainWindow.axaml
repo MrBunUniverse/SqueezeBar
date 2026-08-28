@@ -60,7 +60,7 @@
             <Setter Property="BorderThickness" Value="1.5"/>
         </Style>
 
-        <!-- Ultra-Minimalist Micro CheckBox (1:1 Proportional & Centered) -->
+        <!-- Ultra-Minimalist Solid Indicator CheckBox (No tick mark, solid accent fill when active) -->
         <Style Selector="CheckBox">
             <Setter Property="MinHeight" Value="14"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -70,20 +70,10 @@
                         <Border Name="CheckBorder"
                                 Width="11" Height="11"
                                 CornerRadius="2.5"
-                                BorderThickness="0.8"
+                                BorderThickness="1"
                                 BorderBrush="#3E3E48"
                                 Background="#1A1A1E"
-                                VerticalAlignment="Center">
-                            <Viewbox Width="6.5" Height="6.5" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Name="CheckGlyph"
-                                      Data="M 1 4.5 L 3.5 7 L 8.5 1.5"
-                                      Stroke="#000000"
-                                      StrokeThickness="1.8"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      IsVisible="False"/>
-                            </Viewbox>
-                        </Border>
+                                VerticalAlignment="Center"/>
                         <ContentPresenter Name="PART_ContentPresenter"
                                           Grid.Column="1"
                                           Content="{TemplateBinding Content}"
@@ -98,9 +88,6 @@
         <Style Selector="CheckBox:checked /template/ Border#CheckBorder">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-        </Style>
-        <Style Selector="CheckBox:checked /template/ Path#CheckGlyph">
-            <Setter Property="IsVisible" Value="True"/>
         </Style>
         <Style Selector="CheckBox:pointerover /template/ Border#CheckBorder">
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
