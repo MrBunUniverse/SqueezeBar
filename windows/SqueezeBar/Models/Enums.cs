@@ -45,6 +45,13 @@ public enum TargetSizeMode
     Custom
 }
 
+public enum BackgroundDarkness
+{
+    DarkGrey,
+    ReallyDark,
+    Oled
+}
+
 public static class EnumExtensions
 {
     public static long? GetTargetBytes(this TargetSizeMode mode, double customMB = 25.0)

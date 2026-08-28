@@ -216,6 +216,13 @@ public class AppState : INotifyPropertyChanged
         set { _accentColorHex = value; OnPropertyChanged(); }
     }
 
+    private BackgroundDarkness _backgroundDarkness = BackgroundDarkness.DarkGrey;
+    public BackgroundDarkness BackgroundDarkness
+    {
+        get => _backgroundDarkness;
+        set { _backgroundDarkness = value; OnPropertyChanged(); }
+    }
+
     private string _outputSuffix = "_squeezed";
     public string OutputSuffix
     {

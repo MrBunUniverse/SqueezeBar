@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using SqueezeBar.Models;
 using SqueezeBar.Services;
 
@@ -139,9 +140,7 @@ public partial class MainWindow : Window
         StagedQueueBorder.AddHandler(DragDrop.DropEvent, OnStagedDrop);
         StagedQueueBorder.AddHandler(DragDrop.DragOverEvent, OnDragOver);
 
-        EmptyQueueHint.IsVisible = _state.StagedQueue.Count == 0;
-
-        // Prevent Wine / CrossOver from maximizing into a new macOS Fullscreen Space
+        EmptyQueueHint.IsVisible = _state.StagedQueue.Count == 0;        // Prevent Wine / CrossOver from maximizing into a new macOS Fullscreen Space
         PropertyChanged += (s, e) =>
         {
             if (e.Property == Window.WindowStateProperty && WindowState != WindowState.Normal)
@@ -154,6 +153,8 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
         }, RoutingStrategies.Bubble);
+
+        ApplyBackgroundDarkness(_state.BackgroundDarkness);
     }
 
     // ── Tab Navigation ──
@@ -275,9 +276,28 @@ public partial class MainWindow : Window
     private void UpdateTileStyles()
     {
         var accentBrush = SolidColorBrush.Parse(_state.AccentColorHex);
-        var defaultBorder = SolidColorBrush.Parse("#2D2D32");
-        var defaultBg = SolidColorBrush.Parse("#222226");
-        var activeBg = SolidColorBrush.Parse("#172C35"); // Pre-composited subtle accent tint
+        string defaultBorderHex = _state.BackgroundDarkness switch
+        {
+            BackgroundDarkness.ReallyDark => "#222228",
+            BackgroundDarkness.Oled => "#1A1A20",
+            _ => "#2D2D32"
+        };
+        string defaultBgHex = _state.BackgroundDarkness switch
+        {
+            BackgroundDarkness.ReallyDark => "#18181D",
+            BackgroundDarkness.Oled => "#0E0E11",
+            _ => "#222226"
+        };
+        string activeBgHex = _state.BackgroundDarkness switch
+        {
+            BackgroundDarkness.ReallyDark => "#14242C",
+            BackgroundDarkness.Oled => "#0D1820",
+            _ => "#172C35"
+        };
+
+        var defaultBorder = SolidColorBrush.Parse(defaultBorderHex);
+        var defaultBg = SolidColorBrush.Parse(defaultBgHex);
+        var activeBg = SolidColorBrush.Parse(activeBgHex);
         var defaultTitle = SolidColorBrush.Parse("#B0B0BE");
         var mutedChevron = SolidColorBrush.Parse("#55556A");
         bool exp = _state.IsFormatDrawerExpanded;
@@ -329,7 +349,20 @@ public partial class MainWindow : Window
 
     private void UpdatePresetButtonStyles(Button activeBtn)
     {
-        var inactive = SolidColorBrush.Parse("#28282C");
+        string inactiveHex = _state.BackgroundDarkness switch
+        {
+            BackgroundDarkness.ReallyDark => "#1B1B20",
+            BackgroundDarkness.Oled => "#141418",
+            _ => "#28282C"
+        };
+        string borderHex = _state.BackgroundDarkness switch
+        {
+            BackgroundDarkness.ReallyDark => "#222228",
+            BackgroundDarkness.Oled => "#1A1A20",
+            _ => "#2D2D32"
+        };
+
+        var inactive = SolidColorBrush.Parse(inactiveHex);
         var activeBg = SolidColorBrush.Parse(_state.AccentColorHex);
         var inactiveFg = SolidColorBrush.Parse("#A0A0B0");
 
@@ -337,7 +370,7 @@ public partial class MainWindow : Window
         {
             btn.Background = inactive;
             btn.Foreground = inactiveFg;
-            btn.BorderBrush = SolidColorBrush.Parse("#2D2D32");
+            btn.BorderBrush = SolidColorBrush.Parse(borderHex);
             btn.FontWeight = FontWeight.Normal;
         }
         activeBtn.Background = activeBg;
@@ -369,10 +402,10 @@ public partial class MainWindow : Window
     private void CodecH264_Click(object? sender, RoutedEventArgs e) { _state.VideoCodec = VideoCodecPreference.H264; UpdatePillGroup(CodecH264Btn, CodecHevcBtn, CodecGifBtn); }
     private void CodecGif_Click(object? sender, RoutedEventArgs e) { _state.VideoCodec = VideoCodecPreference.AnimatedGIF; UpdatePillGroup(CodecGifBtn, CodecHevcBtn, CodecH264Btn); }
 
-    // ── Image Presets & Controls ──
-    private void ImgPresetMax_Click(object? sender, RoutedEventArgs e) { _state.ImageQuality = 0.40; ImgQualitySlider.Value = 0.40; UpdatePillGroup(ImgPresetMaxBtn, ImgPresetBalBtn, ImgPresetLosslessBtn); }
+    // ── Image Presets & Formats ──
+    private void ImgPresetMax_Click(object? sender, RoutedEventArgs e) { _state.ImageQuality = 0.50; ImgQualitySlider.Value = 0.50; UpdatePillGroup(ImgPresetMaxBtn, ImgPresetBalBtn, ImgPresetLosslessBtn); }
     private void ImgPresetBal_Click(object? sender, RoutedEventArgs e) { _state.ImageQuality = 0.80; ImgQualitySlider.Value = 0.80; UpdatePillGroup(ImgPresetBalBtn, ImgPresetMaxBtn, ImgPresetLosslessBtn); }
-    private void ImgPresetLossless_Click(object? sender, RoutedEventArgs e) { _state.ImageQuality = 0.98; ImgQualitySlider.Value = 0.98; UpdatePillGroup(ImgPresetLosslessBtn, ImgPresetMaxBtn, ImgPresetBalBtn); }
+    private void ImgPresetLossless_Click(object? sender, RoutedEventArgs e) { _state.ImageQuality = 0.95; ImgQualitySlider.Value = 0.95; UpdatePillGroup(ImgPresetLosslessBtn, ImgPresetMaxBtn, ImgPresetBalBtn); }
 
     private void ImgScale25_Click(object? sender, RoutedEventArgs e) { _state.ImageResolutionScale = 0.25; ImgScaleSlider.Value = 0.25; UpdatePillGroup(ImgScale25Btn, ImgScale50Btn, ImgScale75Btn, ImgScale100Btn); }
     private void ImgScale50_Click(object? sender, RoutedEventArgs e) { _state.ImageResolutionScale = 0.50; ImgScaleSlider.Value = 0.50; UpdatePillGroup(ImgScale50Btn, ImgScale25Btn, ImgScale75Btn, ImgScale100Btn); }
@@ -399,7 +432,20 @@ public partial class MainWindow : Window
     // ── Helper: Pill Group Highlighter ──
     private void UpdatePillGroup(Button activeBtn, params Button[] otherBtns)
     {
-        var inactive = SolidColorBrush.Parse("#28282C");
+        string inactiveHex = _state.BackgroundDarkness switch
+        {
+            BackgroundDarkness.ReallyDark => "#1B1B20",
+            BackgroundDarkness.Oled => "#141418",
+            _ => "#28282C"
+        };
+        string borderHex = _state.BackgroundDarkness switch
+        {
+            BackgroundDarkness.ReallyDark => "#222228",
+            BackgroundDarkness.Oled => "#1A1A20",
+            _ => "#2D2D32"
+        };
+
+        var inactive = SolidColorBrush.Parse(inactiveHex);
         var activeBg = SolidColorBrush.Parse(_state.AccentColorHex);
         var inactiveFg = SolidColorBrush.Parse("#A0A0B0");
 
@@ -412,7 +458,7 @@ public partial class MainWindow : Window
         {
             btn.Background = inactive;
             btn.Foreground = inactiveFg;
-            btn.BorderBrush = SolidColorBrush.Parse("#2D2D32");
+            btn.BorderBrush = SolidColorBrush.Parse(borderHex);
             btn.FontWeight = FontWeight.Normal;
         }
     }
@@ -523,6 +569,94 @@ public partial class MainWindow : Window
         activeBall.Width = 28;
         activeBall.Height = 28;
         activeBall.CornerRadius = new CornerRadius(14);
+    }
+
+    // ── Background Darkness Themes ──
+    private void DarknessGrey_Click(object? sender, RoutedEventArgs e) => ApplyBackgroundDarkness(BackgroundDarkness.DarkGrey);
+    private void DarknessReallyDark_Click(object? sender, RoutedEventArgs e) => ApplyBackgroundDarkness(BackgroundDarkness.ReallyDark);
+    private void DarknessOled_Click(object? sender, RoutedEventArgs e) => ApplyBackgroundDarkness(BackgroundDarkness.Oled);
+
+    private void ApplyBackgroundDarkness(BackgroundDarkness darkness)
+    {
+        _state.BackgroundDarkness = darkness;
+
+        string winBgHex;
+        string cardBgHex;
+        string deckBgHex;
+        string gliderBgHex;
+        string cardBorderHex;
+        string label;
+
+        switch (darkness)
+        {
+            case BackgroundDarkness.ReallyDark:
+                winBgHex = "#101014";
+                cardBgHex = "#15151A";
+                deckBgHex = "#0E0E12";
+                gliderBgHex = "#0C0C0F";
+                cardBorderHex = "#1E1E24";
+                label = "Really Dark";
+                break;
+            case BackgroundDarkness.Oled:
+                winBgHex = "#000000";
+                cardBgHex = "#0A0A0C";
+                deckBgHex = "#050507";
+                gliderBgHex = "#050507";
+                cardBorderHex = "#18181C";
+                label = "OLED Black";
+                break;
+            default: // DarkGrey
+                winBgHex = "#1A1A1E";
+                cardBgHex = "#1F1F23";
+                deckBgHex = "#18181C";
+                gliderBgHex = "#141418";
+                cardBorderHex = "#27272B";
+                label = "Dark Grey";
+                break;
+        }
+
+        var winBg = SolidColorBrush.Parse(winBgHex);
+        var cardBg = SolidColorBrush.Parse(cardBgHex);
+        var cardBorder = SolidColorBrush.Parse(cardBorderHex);
+
+        this.Background = winBg;
+        DarknessModeLabel.Text = label;
+
+        // Repaint all cards and borders
+        var allBorders = this.GetVisualDescendants().OfType<Border>();
+        foreach (var b in allBorders)
+        {
+            if (b == ImagesTileBorder || b == VideoTileBorder || b == AudioTileBorder || b == PdfTileBorder)
+                continue;
+
+            if (b.Background is SolidColorBrush sb)
+            {
+                string oldHex = sb.Color.ToString().ToUpperInvariant();
+                if (oldHex.Contains("1F1F23") || oldHex.Contains("15151A") || oldHex.Contains("0A0A0C"))
+                    b.Background = cardBg;
+                else if (oldHex.Contains("18181C") || oldHex.Contains("0E0E12") || oldHex.Contains("050507"))
+                    b.Background = SolidColorBrush.Parse(deckBgHex);
+                else if (oldHex.Contains("141418") || oldHex.Contains("0C0C0F"))
+                    b.Background = SolidColorBrush.Parse(gliderBgHex);
+            }
+            if (b.BorderBrush is SolidColorBrush sbb)
+            {
+                string oldBorder = sbb.Color.ToString().ToUpperInvariant();
+                if (oldBorder.Contains("27272B") || oldBorder.Contains("1E1E24") || oldBorder.Contains("18181C"))
+                    b.BorderBrush = cardBorder;
+            }
+        }
+
+        UpdateTileStyles();
+        RefreshAllPillHighlights();
+
+        Button activeBtn = darkness switch
+        {
+            BackgroundDarkness.ReallyDark => DarknessReallyDarkBtn,
+            BackgroundDarkness.Oled => DarknessOledBtn,
+            _ => DarknessGreyBtn
+        };
+        UpdatePillGroup(activeBtn, DarknessGreyBtn, DarknessReallyDarkBtn, DarknessOledBtn);
     }
 
     private void RefreshAllPillHighlights()
