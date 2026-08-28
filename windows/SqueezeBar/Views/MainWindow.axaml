@@ -204,11 +204,45 @@
         <!-- ════════════════════════════════════════════════════ -->
         <!-- 3. SCROLLABLE CONTENT AREA                          -->
         <!-- ════════════════════════════════════════════════════ -->
-        <ScrollViewer Grid.Row="2" Margin="0,10,0,0" Padding="20,0,20,14">
+        <ScrollViewer x:Name="MainScrollViewer" Grid.Row="2" Margin="0,10,0,0" Padding="20,0,20,14">
             <StackPanel Spacing="10">
 
                 <!-- ━━━━ ACTIVITY TAB ━━━━ -->
                 <StackPanel x:Name="ActivityTabPanel" Spacing="10">
+
+                    <!-- Active Processing Jobs (Prominently placed at top of Activity) -->
+                    <Border x:Name="ActiveJobsBorder" Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="12" BorderBrush="#27272B" BorderThickness="0.5" IsVisible="False">
+                        <StackPanel Spacing="7">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <TextBlock Text="CURRENT QUEUE" FontSize="9" FontWeight="Bold" Foreground="#6B6B78" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="Clear" FontSize="9" Background="Transparent" Foreground="#6B6B78" Padding="4,2" Margin="0,0,4,0" Click="ClearCompletedJobs_Click" BorderThickness="0"/>
+                                <Button Grid.Column="2" Padding="0" Background="Transparent" BorderThickness="0" Click="CancelAllJobs_Click">
+                                    <Border Background="#312023" CornerRadius="10" Padding="6,2.5" BorderBrush="#3D2528" BorderThickness="0.5">
+                                        <TextBlock Text="Cancel All" FontSize="9" FontWeight="SemiBold" Foreground="#EF5350"/>
+                                    </Border>
+                                </Button>
+                            </Grid>
+
+                            <ItemsControl x:Name="ActiveJobsList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="models:CompressionJob">
+                                        <Border Background="#1A1A1E" CornerRadius="8" Padding="10,8" Margin="0,2" BorderBrush="#27272B" BorderThickness="0.5">
+                                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                                <StackPanel Grid.Column="0" Spacing="4">
+                                                    <TextBlock Text="{Binding FileName}" FontSize="10.5" FontWeight="SemiBold" Foreground="#E8E8ED" TextTrimming="CharacterEllipsis"/>
+                                                    <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="1" Height="4" Background="#28282C" Foreground="{DynamicResource AccentBrush}" CornerRadius="2"/>
+                                                </StackPanel>
+                                                <Border Grid.Column="1" Background="#172C35" CornerRadius="10" Padding="7,2.5" Margin="6,0,0,0" BorderBrush="#1A3845" BorderThickness="0.5" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"/>
+                                                </Border>
+                                                <Button Grid.Column="2" Content="✕" FontSize="9" Background="Transparent" Foreground="#55556A" Padding="3,2" Margin="3,0,0,0" Click="CancelSingleJob_Click" Tag="{Binding Id}" BorderThickness="0" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
 
                     <!-- 4 Live Format Profile Tiles -->
                     <Grid ColumnDefinitions="*,*,*,*">
@@ -534,40 +568,6 @@
                             </ItemsControl>
 
                             <TextBlock x:Name="EmptyQueueHint" Text="Drag files here to customize per-file settings" FontSize="9.5" Foreground="#44444F" TextAlignment="Center" Margin="0,4"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Active Processing Jobs -->
-                    <Border x:Name="ActiveJobsBorder" Background="#1F1F23" CornerRadius="10" Padding="12" BorderBrush="#27272B" BorderThickness="0.5" IsVisible="False">
-                        <StackPanel Spacing="7">
-                            <Grid ColumnDefinitions="*,Auto,Auto">
-                                <TextBlock Text="CURRENT QUEUE" FontSize="9" FontWeight="Bold" Foreground="#6B6B78" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
-                                <Button Grid.Column="1" Content="Clear" FontSize="9" Background="Transparent" Foreground="#6B6B78" Padding="4,2" Margin="0,0,4,0" Click="ClearCompletedJobs_Click" BorderThickness="0"/>
-                                <Button Grid.Column="2" Padding="0" Background="Transparent" BorderThickness="0" Click="CancelAllJobs_Click">
-                                    <Border Background="#312023" CornerRadius="10" Padding="6,2.5" BorderBrush="#3D2528" BorderThickness="0.5">
-                                        <TextBlock Text="Cancel All" FontSize="9" FontWeight="SemiBold" Foreground="#EF5350"/>
-                                    </Border>
-                                </Button>
-                            </Grid>
-
-                            <ItemsControl x:Name="ActiveJobsList">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="models:CompressionJob">
-                                        <Border Background="#1A1A1E" CornerRadius="8" Padding="9,7" Margin="0,2" BorderBrush="#27272B" BorderThickness="0.5">
-                                            <Grid ColumnDefinitions="*,Auto,Auto">
-                                                <StackPanel Grid.Column="0" Spacing="3">
-                                                    <TextBlock Text="{Binding FileName}" FontSize="10.5" FontWeight="Medium" Foreground="#E8E8ED" TextTrimming="CharacterEllipsis"/>
-                                                    <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="1" Height="3" Background="#28282C" Foreground="#00D2FF" CornerRadius="1.5"/>
-                                                </StackPanel>
-                                                <Border Grid.Column="1" Background="#172C35" CornerRadius="10" Padding="6,2" Margin="6,0,0,0" BorderBrush="#1A3845" BorderThickness="0.5">
-                                                    <TextBlock Text="{Binding StatusText}" FontSize="9" FontWeight="SemiBold" Foreground="#00D2FF"/>
-                                                </Border>
-                                                <Button Grid.Column="2" Content="✕" FontSize="9" Background="Transparent" Foreground="#55556A" Padding="3,2" Click="CancelSingleJob_Click" Tag="{Binding Id}" BorderThickness="0"/>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
                         </StackPanel>
                     </Border>
 
