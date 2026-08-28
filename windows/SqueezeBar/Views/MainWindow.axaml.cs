@@ -639,6 +639,53 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void QuickDropBorder_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Select Media Files to Squeeze",
+                AllowMultiple = true
+            });
+
+            if (files != null && files.Count > 0)
+            {
+                var paths = files.Select(f => f.TryGetLocalPath() ?? f.Path.LocalPath).Where(p => !string.IsNullOrEmpty(p)).ToList();
+                if (paths.Count > 0)
+                {
+                    ActivityTab_Click(null, new RoutedEventArgs());
+                    await _state.ProcessDroppedFilesImmediatelyAsync(paths);
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async void AddQueueFiles_Click(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Add Files to Staged Queue",
+                AllowMultiple = true
+            });
+
+            if (files != null && files.Count > 0)
+            {
+                var paths = files.Select(f => f.TryGetLocalPath() ?? f.Path.LocalPath).Where(p => !string.IsNullOrEmpty(p)).ToList();
+                if (paths.Count > 0)
+                {
+                    ActivityTab_Click(null, new RoutedEventArgs());
+                    _state.AddFilesToStagedQueue(paths);
+                    EmptyQueueHint.IsVisible = _state.StagedQueue.Count == 0;
+                }
+            }
+        }
+        catch { }
+    }
+
     private void CustomizeItem_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is StagedQueueItem item) new QueueItemSettingsDialog(item).ShowDialog(this);

@@ -9,7 +9,45 @@ namespace SqueezeBar.Services;
 
 public static class VideoAudioCompressor
 {
-    public static string FfmpegPath { get; set; } = "ffmpeg";
+    public static string ResolveFfmpegPath()
+    {
+        try
+        {
+            // 1. Next to executable
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string localExe = Path.Combine(baseDir, "ffmpeg.exe");
+            if (File.Exists(localExe)) return localExe;
+
+            string localExeNoExt = Path.Combine(baseDir, "ffmpeg");
+            if (File.Exists(localExeNoExt)) return localExeNoExt;
+
+            // 2. Current Working Directory
+            string cwdExe = Path.Combine(Environment.CurrentDirectory, "ffmpeg.exe");
+            if (File.Exists(cwdExe)) return cwdExe;
+
+            // 3. Local AppData SqueezeBar folder
+            string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SqueezeBar", "ffmpeg.exe");
+            if (File.Exists(appData)) return appData;
+
+            // 4. Common Windows paths
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string[] commonPaths = new[]
+            {
+                Path.Combine(localAppData, "Microsoft", "WinGet", "Links", "ffmpeg.exe"),
+                @"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
+                @"C:\ffmpeg\bin\ffmpeg.exe",
+                @"C:\tools\ffmpeg\bin\ffmpeg.exe"
+            };
+            foreach (var cp in commonPaths)
+            {
+                if (File.Exists(cp)) return cp;
+            }
+        }
+        catch { }
+
+        // 5. System PATH fallback
+        return "ffmpeg";
+    }
 
     public static async Task<CompressionResult?> CompressVideoAsync(
         string inputPath,
@@ -80,8 +118,10 @@ public static class VideoAudioCompressor
 
             progress?.Report(0.3);
 
+            string ffmpeg = ResolveFfmpegPath();
+
             // Execute FFmpeg
-            var result = await Cli.Wrap(FfmpegPath)
+            var result = await Cli.Wrap(ffmpeg)
                 .WithArguments(args.ToString())
                 .WithValidation(CommandResultValidation.None)
                 .ExecuteAsync();
@@ -148,7 +188,9 @@ public static class VideoAudioCompressor
 
             progress?.Report(0.3);
 
-            var result = await Cli.Wrap(FfmpegPath)
+            string ffmpeg = ResolveFfmpegPath();
+
+            var result = await Cli.Wrap(ffmpeg)
                 .WithArguments(args)
                 .WithValidation(CommandResultValidation.None)
                 .ExecuteAsync();

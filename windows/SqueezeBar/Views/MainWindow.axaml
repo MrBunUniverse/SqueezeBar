@@ -483,15 +483,17 @@
                             BorderThickness="0.5"
                             CornerRadius="10"
                             Padding="18,14"
+                            Cursor="Hand"
+                            PointerPressed="QuickDropBorder_PointerPressed"
                             DragDrop.AllowDrop="True">
                         <StackPanel Spacing="5" HorizontalAlignment="Center">
-                            <TextBlock Text="Drop files here for instant compression" FontSize="11" Foreground="#B0B0BE" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Drop files here or click to browse" FontSize="11" Foreground="#B0B0BE" HorizontalAlignment="Center"/>
                             <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center" Margin="0,2,0,0">
                                 <Border Background="#28282C" CornerRadius="10" Padding="7,2.5" BorderBrush="#2D2D32" BorderThickness="0.5">
                                     <TextBlock x:Name="QuickDropLimitPill" Text="25 MB Limit" FontSize="8.5" FontWeight="SemiBold" Foreground="#00D2FF"/>
                                 </Border>
                                 <Border Background="#28282C" CornerRadius="10" Padding="7,2.5" BorderBrush="#2D2D32" BorderThickness="0.5">
-                                    <TextBlock Text="WebP · HEVC · PDF" FontSize="8.5" Foreground="#6B6B78"/>
+                                    <TextBlock Text="Images · Videos · Audio · PDF" FontSize="8.5" Foreground="#6B6B78"/>
                                 </Border>
                             </StackPanel>
                         </StackPanel>
@@ -507,10 +509,11 @@
                             DragDrop.AllowDrop="True"
                             x:Name="StagedQueueBorder">
                         <StackPanel Spacing="7">
-                            <Grid ColumnDefinitions="*,Auto,Auto">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                                 <TextBlock x:Name="QueueHeaderTitle" Text="Staged Queue (0)" FontSize="11" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
-                                <Button Grid.Column="1" Content="Clear" FontSize="9" Background="Transparent" Foreground="#6B6B78" Padding="4,2" Margin="0,0,6,0" Click="ClearQueue_Click" BorderThickness="0"/>
-                                <Button Grid.Column="2" x:Name="SqueezeAllBtn" Content="Squeeze All" FontSize="10" FontWeight="SemiBold" Background="#00D2FF" Foreground="#000000" CornerRadius="14" Padding="12,5" Click="SqueezeAll_Click"/>
+                                <Button Grid.Column="1" Content="+ Add" FontSize="9" Background="#28282C" Foreground="#00D2FF" CornerRadius="10" Padding="6,2" Margin="0,0,6,0" Click="AddQueueFiles_Click" BorderBrush="#2D2D32" BorderThickness="0.5"/>
+                                <Button Grid.Column="2" Content="Clear" FontSize="9" Background="Transparent" Foreground="#6B6B78" Padding="4,2" Margin="0,0,6,0" Click="ClearQueue_Click" BorderThickness="0"/>
+                                <Button Grid.Column="3" x:Name="SqueezeAllBtn" Content="Squeeze All" FontSize="10" FontWeight="SemiBold" Background="#00D2FF" Foreground="#000000" CornerRadius="14" Padding="12,5" Click="SqueezeAll_Click"/>
                             </Grid>
 
                             <ItemsControl x:Name="StagedQueueItemsList">
