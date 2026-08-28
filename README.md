@@ -9,7 +9,7 @@ SqueezeBar provides effortless 1-drop batch media compression, dual-zone quick/s
 ## Download & Run
 
 - **macOS**: Download [`SqueezeBar-0.98.dmg`](https://github.com/MrBunUniverse/SquezeBar/releases/latest) -> Open & drag to Applications.
-- **Windows (Beta)**: Download [`SqueezeBar-v0.98-beta.exe`](https://github.com/MrBunUniverse/SquezeBar/releases/latest) -> Double-click to run *(Portable, no installation required)*.
+- **Windows (Beta)**: Download [`SqueezeBar-v0.98-beta.exe`](https://github.com/MrBunUniverse/SquezeBar/releases/latest) -> Double-click to run *(Portable, no installation required. Click "More info" -> "Run anyway" if SmartScreen appears on first launch)*.
 
 ---
 
