@@ -20,6 +20,8 @@ public class CompressionConfiguration
 
     public TargetSizeMode TargetSizeMode { get; set; } = TargetSizeMode.Off;
     public double CustomTargetSizeMB { get; set; } = 25.0;
+    public bool PreserveResolutionInTargetMode { get; set; } = true;
+    public bool PreserveAudioQualityInTargetMode { get; set; } = false;
     public bool StripMetadata { get; set; } = true;
     public string OutputSuffix { get; set; } = "_squeezed";
     public bool ReplaceOriginal { get; set; } = false;

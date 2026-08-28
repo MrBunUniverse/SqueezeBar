@@ -3,7 +3,8 @@
         xmlns:models="clr-namespace:SqueezeBar.Models"
         x:Class="SqueezeBar.Views.QueueItemSettingsDialog"
         Title="Per-File Settings"
-        Width="370" Height="460"
+        Width="440" Height="620"
+        MinWidth="440" MinHeight="620"
         CanResize="False"
         WindowStartupLocation="CenterOwner"
         Background="#1A1A1E"
@@ -26,10 +27,11 @@
             <Setter Property="Width" Value="11"/>
             <Setter Property="Height" Value="11"/>
             <Setter Property="CornerRadius" Value="5.5"/>
-            <Setter Property="Background" Value="#00D2FF"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="BorderBrush" Value="#FFFFFF"/>
             <Setter Property="BorderThickness" Value="1.5"/>
         </Style>
+
         <!-- Ultra-Minimalist Solid Indicator CheckBox -->
         <Style Selector="CheckBox">
             <Setter Property="MinHeight" Value="14"/>
@@ -56,11 +58,11 @@
             </Setter>
         </Style>
         <Style Selector="CheckBox:checked /template/ Border#CheckBorder">
-            <Setter Property="Background" Value="#00D2FF"/>
-            <Setter Property="BorderBrush" Value="#00D2FF"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
         </Style>
         <Style Selector="CheckBox:pointerover /template/ Border#CheckBorder">
-            <Setter Property="BorderBrush" Value="#00D2FF"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
         </Style>
         <Style Selector="CheckBox:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Foreground" Value="#E8E8ED"/>
@@ -84,104 +86,172 @@
         <Style Selector="Button:pressed">
             <Setter Property="RenderTransform" Value="scale(0.96)"/>
         </Style>
+
+        <Style Selector="Border.GlassCard">
+            <Setter Property="BoxShadow" Value="0 4 16 0 #25000000"/>
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto" Margin="18,16,18,14">
         <!-- Header -->
-        <Border Grid.Row="0" Margin="0,0,0,12" Padding="0,0,0,10" BorderBrush="#27272B" BorderThickness="0,0,0,0.5">
-            <StackPanel Spacing="3">
-                <TextBlock x:Name="FileNameText" Text="File Name" FontWeight="Bold" FontSize="13" Foreground="#F0F0F5" FontFamily="Georgia, 'Times New Roman', serif" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="FileSizeText" Text="12.4 MB • MP4" FontSize="10" Foreground="#6B6B78"/>
-            </StackPanel>
+        <Border Grid.Row="0" Margin="0,0,0,10" Padding="0,0,0,10" BorderBrush="#27272B" BorderThickness="0,0,0,0.5">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="3">
+                    <TextBlock x:Name="FileNameText" Text="File Name" FontWeight="Bold" FontSize="13" Foreground="#F0F0F5" FontFamily="Georgia, 'Times New Roman', serif" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="FileSizeText" Text="12.4 MB • MP4" FontSize="10" Foreground="#6B6B78"/>
+                </StackPanel>
+                <Border Grid.Column="1" Background="#172C35" CornerRadius="10" Padding="8,3" BorderBrush="#1A3845" BorderThickness="0.5" VerticalAlignment="Center">
+                    <TextBlock x:Name="MediaTypeBadge" Text="Video" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"/>
+                </Border>
+            </Grid>
         </Border>
 
         <!-- Dynamic Settings Body -->
-        <ScrollViewer Grid.Row="1">
-            <StackPanel Spacing="12">
-                <!-- Quality Slider -->
-                <StackPanel Spacing="4">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock x:Name="QualityTitleText" Text="Quality" FontSize="11" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
-                        <TextBlock Grid.Column="1" x:Name="QualityPercentText" Text="80%" FontSize="10.5" FontWeight="SemiBold" Foreground="#00D2FF"/>
-                    </Grid>
-                    <Slider x:Name="QualitySlider" Minimum="0.10" Maximum="1.0" Value="0.80" TickFrequency="0.05" IsSnapToTickEnabled="True"/>
-                </StackPanel>
+        <ScrollViewer Grid.Row="1" Padding="0,0,10,0">
+            <StackPanel Spacing="10">
 
-                <!-- Resolution Scale (Images & Video) -->
-                <StackPanel x:Name="ResolutionScalePanel" Spacing="5">
-                    <TextBlock Text="Resolution Scale" FontSize="11" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
-                    <Grid ColumnDefinitions="*,*,*,*">
-                        <Button Grid.Column="0" x:Name="Scale100Btn" Content="100%" Margin="0,0,1,0" FontSize="8.5" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#00D2FF" Foreground="#000000" CornerRadius="4" Padding="0,4" Click="Scale100_Click"/>
-                        <Button Grid.Column="1" x:Name="Scale75Btn" Content="75%" Margin="1,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="4" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Scale75_Click"/>
-                        <Button Grid.Column="2" x:Name="Scale50Btn" Content="50%" Margin="1,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="4" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Scale50_Click"/>
-                        <Button Grid.Column="3" x:Name="Scale25Btn" Content="25%" Margin="1,0,0,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="4" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Scale25_Click"/>
-                    </Grid>
-                </StackPanel>
+                <!-- 1. Target Size Limit Card -->
+                <Border Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="12" BorderBrush="#27272B" BorderThickness="0.5">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Target Size Limit" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" x:Name="TargetLimitLabel" Text="Off" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                        </Grid>
 
-                <!-- Target Size Limit -->
-                <StackPanel Spacing="5">
-                    <TextBlock Text="Target Size Limit" FontSize="11" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
-                    <Grid ColumnDefinitions="*,*,*,*">
-                        <Button Grid.Column="0" x:Name="LimitOffBtn" Content="Off" Margin="0,0,2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="9" FontWeight="SemiBold" Background="#00D2FF" Foreground="#000000" CornerRadius="14" Padding="0,5" Click="LimitOff_Click"/>
-                        <Button Grid.Column="1" x:Name="Limit25Btn" Content="25 MB" Margin="2,0,2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="9" Background="#28282C" Foreground="#A0A0B0" CornerRadius="14" Padding="0,5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Limit25_Click"/>
-                        <Button Grid.Column="2" x:Name="Limit10Btn" Content="10 MB" Margin="2,0,2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="9" Background="#28282C" Foreground="#A0A0B0" CornerRadius="14" Padding="0,5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Limit10_Click"/>
-                        <Button Grid.Column="3" x:Name="Limit50Btn" Content="50 MB" Margin="2,0,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="9" Background="#28282C" Foreground="#A0A0B0" CornerRadius="14" Padding="0,5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Limit50_Click"/>
-                    </Grid>
-                </StackPanel>
+                        <Grid ColumnDefinitions="*,*,*,*,*,*">
+                            <Button Grid.Column="0" x:Name="LimitManualBtn" Content="Manual" Margin="0,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="12" Padding="0,4.5" FontWeight="SemiBold" Click="LimitManual_Click"/>
+                            <Button Grid.Column="1" x:Name="Limit50Btn" Content="50 MB" Margin="1,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Limit50_Click"/>
+                            <Button Grid.Column="2" x:Name="Limit25Btn" Content="25 MB" Margin="1,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Limit25_Click"/>
+                            <Button Grid.Column="3" x:Name="Limit10Btn" Content="10 MB" Margin="1,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Limit10_Click"/>
+                            <Button Grid.Column="4" x:Name="Limit2Btn" Content="2 MB" Margin="1,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Limit2_Click"/>
+                            <Button Grid.Column="5" x:Name="LimitCustomBtn" Content="Custom" Margin="2,0,0,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="LimitCustom_Click"/>
+                        </Grid>
 
-                <!-- Media Specific Format Controls -->
+                        <StackPanel Spacing="3" Margin="0,2,0,0">
+                            <CheckBox x:Name="LockResolutionCheck" Content="Lock Original Resolution" IsChecked="True"/>
+                            <TextBlock Text="Allows smart downscaling + bitrate reduction" FontSize="8" Foreground="#55556A" Margin="17,-2,0,2"/>
+                            <CheckBox x:Name="LockAudioCheck" Content="Lock Original Audio Quality" IsChecked="False"/>
+                            <TextBlock Text="Dynamically scales audio to maximize video quality" FontSize="8" Foreground="#55556A" Margin="17,-2,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
 
-                <!-- 1. Image Format -->
-                <StackPanel x:Name="ImageFormatPanel" Spacing="4">
-                    <TextBlock Text="Output Format" FontSize="11" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
-                    <ComboBox x:Name="ImageFormatCombo" HorizontalAlignment="Stretch" FontSize="10" Background="#28282C" BorderBrush="#2D2D32">
-                        <ComboBoxItem Content="Modern WebP"/>
-                        <ComboBoxItem Content="Web JPEG"/>
-                        <ComboBoxItem Content="Preserve Original"/>
-                    </ComboBox>
-                </StackPanel>
+                <!-- 2. Quality / Bitrate Slider Card -->
+                <Border Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="12" BorderBrush="#27272B" BorderThickness="0.5">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock x:Name="QualityTitleText" Text="Video Bitrate" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" x:Name="QualityPercentText" Text="70% of source" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                        </Grid>
 
-                <!-- 2. Video Codec -->
-                <StackPanel x:Name="VideoCodecPanel" Spacing="4" IsVisible="False">
-                    <TextBlock Text="Video Codec" FontSize="11" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
-                    <ComboBox x:Name="VideoCodecCombo" HorizontalAlignment="Stretch" FontSize="10" Background="#28282C" BorderBrush="#2D2D32">
-                        <ComboBoxItem Content="HEVC (H.265)"/>
-                        <ComboBoxItem Content="H.264"/>
-                        <ComboBoxItem Content="Animated GIF"/>
-                    </ComboBox>
-                </StackPanel>
+                        <Slider x:Name="QualitySlider" Minimum="0.10" Maximum="1.0" Value="0.70" TickFrequency="0.05" IsSnapToTickEnabled="True"/>
 
-                <!-- 3. Audio Bitrate -->
-                <StackPanel x:Name="AudioBitratePanel" Spacing="4" IsVisible="False">
-                    <TextBlock Text="Audio Bitrate" FontSize="11" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
-                    <ComboBox x:Name="AudioBitrateCombo" HorizontalAlignment="Stretch" FontSize="10" Background="#28282C" BorderBrush="#2D2D32">
-                        <ComboBoxItem Content="64 kbps · Voice"/>
-                        <ComboBoxItem Content="128 kbps · Standard"/>
-                        <ComboBoxItem Content="192 kbps · High Quality"/>
-                        <ComboBoxItem Content="256 kbps · Studio"/>
-                        <ComboBoxItem Content="320 kbps · Maximum"/>
-                    </ComboBox>
-                </StackPanel>
+                        <Grid ColumnDefinitions="*,*,*">
+                            <Button Grid.Column="0" x:Name="PresetMaxCompBtn" Content="Max Compression" Margin="0,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="PresetMaxComp_Click"/>
+                            <Button Grid.Column="1" x:Name="PresetBalancedBtn" Content="Balanced" Margin="2,0,2,0" FontSize="8.5" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="12" Padding="0,4" Click="PresetBalanced_Click"/>
+                            <Button Grid.Column="2" x:Name="PresetVisLosslessBtn" Content="Visually Lossless" Margin="2,0,0,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="PresetVisLossless_Click"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
-                <!-- 4. PDF DPI -->
-                <StackPanel x:Name="PdfDpiPanel" Spacing="5" IsVisible="False">
-                    <TextBlock Text="PDF Target DPI" FontSize="11" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
-                    <Grid ColumnDefinitions="*,*,*,*">
-                        <Button Grid.Column="0" x:Name="PdfDpi72Btn" Content="72" Margin="0,0,2,0" FontSize="9" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="14" Padding="0,5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="PdfDpi72_Click"/>
-                        <Button Grid.Column="1" x:Name="PdfDpi150Btn" Content="150" Margin="2,0,2,0" FontSize="9" FontWeight="SemiBold" Background="#00D2FF" Foreground="#000000" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" CornerRadius="14" Padding="0,5" Click="PdfDpi150_Click"/>
-                        <Button Grid.Column="2" x:Name="PdfDpi200Btn" Content="200" Margin="2,0,2,0" FontSize="9" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="14" Padding="0,5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="PdfDpi200_Click"/>
-                        <Button Grid.Column="3" x:Name="PdfDpi300Btn" Content="300" Margin="2,0,0,0" FontSize="9" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="14" Padding="0,5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="PdfDpi300_Click"/>
-                    </Grid>
-                </StackPanel>
+                <!-- 3. Resolution Scale Card -->
+                <Border x:Name="ResolutionCard" Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="12" BorderBrush="#27272B" BorderThickness="0.5">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Resolution Scale" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" x:Name="ResolutionScaleText" Text="Original (100%)" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                        </Grid>
 
-                <!-- Strip Metadata -->
-                <CheckBox x:Name="StripMetadataCheck" Content="Strip EXIF / GPS Metadata" IsChecked="True" FontSize="10.5" Foreground="#A0A0B0"/>
+                        <Slider x:Name="ResolutionSlider" Minimum="0.25" Maximum="1.0" Value="1.0" TickFrequency="0.05" IsSnapToTickEnabled="True"/>
+
+                        <Grid ColumnDefinitions="*,*,*,*">
+                            <Button Grid.Column="0" x:Name="Res25Btn" Content="25%" Margin="0,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Res25_Click"/>
+                            <Button Grid.Column="1" x:Name="Res50Btn" Content="50%" Margin="2,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Res50_Click"/>
+                            <Button Grid.Column="2" x:Name="Res75Btn" Content="75%" Margin="2,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Res75_Click"/>
+                            <Button Grid.Column="3" x:Name="ResOrigBtn" Content="Original" Margin="2,0,0,0" FontSize="8.5" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="12" Padding="0,4" Click="ResOrig_Click"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 4. Framerate (FPS) Card (Video Only) -->
+                <Border x:Name="FramerateCard" Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="12" BorderBrush="#27272B" BorderThickness="0.5">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Framerate (FPS)" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" x:Name="FramerateText" Text="Original" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,*,*,*,*,*,*,*">
+                            <Button Grid.Column="0" x:Name="FpsOrigBtn" Content="Original" Margin="0,0,1,0" FontSize="8" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="10" Padding="0,3.5" Click="FpsOrig_Click"/>
+                            <Button Grid.Column="1" x:Name="Fps60Btn" Content="60" Margin="1,0,1,0" FontSize="8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="10" Padding="0,3.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Fps60_Click"/>
+                            <Button Grid.Column="2" x:Name="Fps50Btn" Content="50" Margin="1,0,1,0" FontSize="8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="10" Padding="0,3.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Fps50_Click"/>
+                            <Button Grid.Column="3" x:Name="Fps30Btn" Content="30" Margin="1,0,1,0" FontSize="8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="10" Padding="0,3.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Fps30_Click"/>
+                            <Button Grid.Column="4" x:Name="Fps25Btn" Content="25" Margin="1,0,1,0" FontSize="8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="10" Padding="0,3.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Fps25_Click"/>
+                            <Button Grid.Column="5" x:Name="Fps24Btn" Content="24" Margin="1,0,1,0" FontSize="8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="10" Padding="0,3.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Fps24_Click"/>
+                            <Button Grid.Column="6" x:Name="Fps15Btn" Content="15" Margin="1,0,1,0" FontSize="8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="10" Padding="0,3.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Fps15_Click"/>
+                            <Button Grid.Column="7" x:Name="Fps12Btn" Content="12" Margin="1,0,0,0" FontSize="8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="10" Padding="0,3.5" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Fps12_Click"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 5. Format / Codec Card -->
+                <Border Classes="GlassCard" Background="#1F1F23" CornerRadius="10" Padding="12" BorderBrush="#27272B" BorderThickness="0.5">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Format / Codec" FontSize="11.5" FontWeight="Bold" Foreground="#E8E8ED" FontFamily="Georgia, 'Times New Roman', serif"/>
+
+                        <!-- Video Codecs -->
+                        <StackPanel x:Name="VideoCodecPanel" Spacing="6">
+                            <Grid ColumnDefinitions="*,*,*">
+                                <Button Grid.Column="0" x:Name="CodecHevcBtn" Content="HEVC / H.265" Margin="0,0,2,0" FontSize="8.5" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="12" Padding="0,4" Click="CodecHevc_Click"/>
+                                <Button Grid.Column="1" x:Name="CodecH264Btn" Content="H.264 / AVC" Margin="2,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="CodecH264_Click"/>
+                                <Button Grid.Column="2" x:Name="CodecGifBtn" Content="Animated GIF" Margin="2,0,0,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="CodecGif_Click"/>
+                            </Grid>
+                            <CheckBox x:Name="MuteAudioCheck" Content="Mute / Remove Audio Track" Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <!-- Image Formats -->
+                        <StackPanel x:Name="ImageFormatPanel" Spacing="6" IsVisible="False">
+                            <Grid ColumnDefinitions="*,*,*">
+                                <Button Grid.Column="0" x:Name="ImgWebpBtn" Content="Modern WebP" Margin="0,0,2,0" FontSize="8.5" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="12" Padding="0,4" Click="ImgWebp_Click"/>
+                                <Button Grid.Column="1" x:Name="ImgJpegBtn" Content="Web JPEG" Margin="2,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="ImgJpeg_Click"/>
+                                <Button Grid.Column="2" x:Name="ImgPreserveBtn" Content="Preserve Original" Margin="2,0,0,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="ImgPreserve_Click"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- Audio Bitrates -->
+                        <StackPanel x:Name="AudioBitratePanel" Spacing="6" IsVisible="False">
+                            <Grid ColumnDefinitions="*,*,*,*,*">
+                                <Button Grid.Column="0" x:Name="Audio64Btn" Content="64k" Margin="0,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Audio64_Click"/>
+                                <Button Grid.Column="1" x:Name="Audio128Btn" Content="128k" Margin="1,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Audio128_Click"/>
+                                <Button Grid.Column="2" x:Name="Audio192Btn" Content="192k" Margin="1,0,1,0" FontSize="8.5" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="12" Padding="0,4" Click="Audio192_Click"/>
+                                <Button Grid.Column="3" x:Name="Audio256Btn" Content="256k" Margin="1,0,1,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Audio256_Click"/>
+                                <Button Grid.Column="4" x:Name="Audio320Btn" Content="320k" Margin="1,0,0,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Audio320_Click"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- PDF DPIs -->
+                        <StackPanel x:Name="PdfDpiPanel" Spacing="6" IsVisible="False">
+                            <Grid ColumnDefinitions="*,*,*,*">
+                                <Button Grid.Column="0" x:Name="Pdf72Btn" Content="72 DPI" Margin="0,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Pdf72_Click"/>
+                                <Button Grid.Column="1" x:Name="Pdf150Btn" Content="150 DPI" Margin="2,0,2,0" FontSize="8.5" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="12" Padding="0,4" Click="Pdf150_Click"/>
+                                <Button Grid.Column="2" x:Name="Pdf200Btn" Content="200 DPI" Margin="2,0,2,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Pdf200_Click"/>
+                                <Button Grid.Column="3" x:Name="Pdf300Btn" Content="300 DPI" Margin="2,0,0,0" FontSize="8.5" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#28282C" Foreground="#A0A0B0" CornerRadius="12" Padding="0,4" BorderBrush="#2D2D32" BorderThickness="0.5" Click="Pdf300_Click"/>
+                            </Grid>
+                            <CheckBox x:Name="PdfGrayscaleCheck" Content="Convert to Grayscale" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 6. Metadata Strip -->
+                <CheckBox x:Name="StripMetadataCheck" Content="Strip EXIF &amp; GPS location metadata" IsChecked="True"/>
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Footer -->
-        <Border Grid.Row="2" Margin="0,10,0,0" Padding="0,8,0,0" BorderBrush="#27272B" BorderThickness="0,0.5,0,0">
-            <Button Content="Done" HorizontalAlignment="Right" Background="#00D2FF" Foreground="#000000" FontWeight="Bold" FontSize="10.5" Padding="18,6" CornerRadius="14" Click="Done_Click"/>
+        <!-- Footer Actions -->
+        <Border Grid.Row="2" Margin="0,10,0,0" Padding="0,10,0,0" BorderBrush="#27272B" BorderThickness="0,0.5,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <Button Grid.Column="1" Content="Done" FontSize="11" FontWeight="SemiBold" Background="{DynamicResource AccentBrush}" Foreground="#000000" CornerRadius="16" Padding="20,6.5" Click="Done_Click"/>
+            </Grid>
         </Border>
     </Grid>
 </Window>

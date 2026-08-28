@@ -38,11 +38,13 @@ public enum AudioBitratePreference
 
 public enum TargetSizeMode
 {
-    Off,
-    Discord25,
-    Email10,
-    Discord50,
-    Custom
+    Off = 0,
+    Manual = 0,
+    Discord50 = 1,
+    Discord25 = 2,
+    Email10 = 3,
+    Web2 = 4,
+    Custom = 5
 }
 
 public enum BackgroundDarkness
@@ -58,9 +60,10 @@ public static class EnumExtensions
     {
         return mode switch
         {
+            TargetSizeMode.Discord50 => 50L * 1024 * 1024,
             TargetSizeMode.Discord25 => 25L * 1024 * 1024,
             TargetSizeMode.Email10 => 10L * 1024 * 1024,
-            TargetSizeMode.Discord50 => 50L * 1024 * 1024,
+            TargetSizeMode.Web2 => 2L * 1024 * 1024,
             TargetSizeMode.Custom => (long)(customMB * 1024 * 1024),
             _ => null
         };
@@ -68,10 +71,11 @@ public static class EnumExtensions
 
     public static string GetDisplayName(this TargetSizeMode mode) => mode switch
     {
-        TargetSizeMode.Off => "Off",
+        TargetSizeMode.Off => "Manual / Off",
+        TargetSizeMode.Discord50 => "50MB (Discord)",
         TargetSizeMode.Discord25 => "25MB (Discord)",
         TargetSizeMode.Email10 => "10MB (Email)",
-        TargetSizeMode.Discord50 => "50MB (Discord)",
+        TargetSizeMode.Web2 => "2MB (Web)",
         TargetSizeMode.Custom => "Custom Limit",
         _ => "Off"
     };

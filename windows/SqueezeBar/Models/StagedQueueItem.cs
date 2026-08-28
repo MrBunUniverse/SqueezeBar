@@ -40,6 +40,20 @@ public class StagedQueueItem : INotifyPropertyChanged
         set { _customVideoCodec = value; OnPropertyChanged(); }
     }
 
+    private int _customVideoFramerate = 0;
+    public int CustomVideoFramerate
+    {
+        get => _customVideoFramerate;
+        set { _customVideoFramerate = value; OnPropertyChanged(); }
+    }
+
+    private bool _customVideoRemoveAudio = false;
+    public bool CustomVideoRemoveAudio
+    {
+        get => _customVideoRemoveAudio;
+        set { _customVideoRemoveAudio = value; OnPropertyChanged(); }
+    }
+
     private TargetSizeMode _customTargetSizeMode = TargetSizeMode.Off;
     public TargetSizeMode CustomTargetSizeMode
     {
@@ -54,6 +68,20 @@ public class StagedQueueItem : INotifyPropertyChanged
         set { _customTargetSizeMB = value; OnPropertyChanged(); OnPropertyChanged(nameof(CustomSettingSummary)); }
     }
 
+    private bool _preserveResolutionInTargetMode = true;
+    public bool PreserveResolutionInTargetMode
+    {
+        get => _preserveResolutionInTargetMode;
+        set { _preserveResolutionInTargetMode = value; OnPropertyChanged(); }
+    }
+
+    private bool _preserveAudioQualityInTargetMode = false;
+    public bool PreserveAudioQualityInTargetMode
+    {
+        get => _preserveAudioQualityInTargetMode;
+        set { _preserveAudioQualityInTargetMode = value; OnPropertyChanged(); }
+    }
+
     private AudioBitratePreference _customAudioBitrate = AudioBitratePreference.K192;
     public AudioBitratePreference CustomAudioBitrate
     {
@@ -66,6 +94,13 @@ public class StagedQueueItem : INotifyPropertyChanged
     {
         get => _customPdfDpi;
         set { _customPdfDpi = value; OnPropertyChanged(); OnPropertyChanged(nameof(CustomSettingSummary)); }
+    }
+
+    private bool _customPdfGrayscale = false;
+    public bool CustomPdfGrayscale
+    {
+        get => _customPdfGrayscale;
+        set { _customPdfGrayscale = value; OnPropertyChanged(); }
     }
 
     private bool _stripMetadata = true;
@@ -94,7 +129,7 @@ public class StagedQueueItem : INotifyPropertyChanged
         get
         {
             var parts = new System.Collections.Generic.List<string>();
-            if (CustomTargetSizeMode != TargetSizeMode.Off)
+            if (CustomTargetSizeMode != TargetSizeMode.Off && CustomTargetSizeMode != TargetSizeMode.Manual)
             {
                 var targetBytes = CustomTargetSizeMode.GetTargetBytes(CustomTargetSizeMB);
                 if (targetBytes.HasValue)
@@ -106,6 +141,10 @@ public class StagedQueueItem : INotifyPropertyChanged
             if (CustomResolutionScale < 0.99)
             {
                 parts.Add($"{(int)(CustomResolutionScale * 100)}% Scale");
+            }
+            if (CustomVideoFramerate > 0)
+            {
+                parts.Add($"{CustomVideoFramerate} FPS");
             }
             return string.Join(" • ", parts);
         }
@@ -133,10 +172,15 @@ public class StagedQueueItem : INotifyPropertyChanged
 
         CustomImageFormat = baseConfig.ImageFormatPolicy;
         CustomVideoCodec = baseConfig.VideoCodec;
+        CustomVideoFramerate = 0;
+        CustomVideoRemoveAudio = baseConfig.VideoRemoveAudio;
         CustomAudioBitrate = baseConfig.AudioBitrate;
         CustomPdfDpi = baseConfig.PdfDPI;
+        CustomPdfGrayscale = baseConfig.PdfGrayscale;
         CustomTargetSizeMode = baseConfig.TargetSizeMode;
         CustomTargetSizeMB = baseConfig.CustomTargetSizeMB;
+        PreserveResolutionInTargetMode = baseConfig.PreserveResolutionInTargetMode;
+        PreserveAudioQualityInTargetMode = baseConfig.PreserveAudioQualityInTargetMode;
         StripMetadata = baseConfig.StripMetadata;
     }
 
@@ -149,10 +193,14 @@ public class StagedQueueItem : INotifyPropertyChanged
         config.VideoQuality = CustomQuality;
         config.VideoResolutionScale = CustomResolutionScale;
         config.VideoCodec = CustomVideoCodec;
+        config.VideoRemoveAudio = CustomVideoRemoveAudio;
         config.AudioBitrate = CustomAudioBitrate;
         config.PdfDPI = CustomPdfDpi;
+        config.PdfGrayscale = CustomPdfGrayscale;
         config.TargetSizeMode = CustomTargetSizeMode;
         config.CustomTargetSizeMB = CustomTargetSizeMB;
+        config.PreserveResolutionInTargetMode = PreserveResolutionInTargetMode;
+        config.PreserveAudioQualityInTargetMode = PreserveAudioQualityInTargetMode;
         config.StripMetadata = StripMetadata;
         return config;
     }
