@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using CliWrap;
 using SqueezeBar.Models;
@@ -12,7 +13,8 @@ public static class VideoAudioCompressor
     public static async Task<CompressionResult?> CompressVideoAsync(
         string inputPath,
         CompressionConfiguration config,
-        IProgress<double>? progress = null)
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -48,9 +50,9 @@ public static class VideoAudioCompressor
                 counter++;
             }
 
-            // Build FFmpeg Arguments
+            // Build Robust FFmpeg Arguments
             var args = new StringBuilder();
-            args.Append($"-y -i \"{inputPath}\" ");
+            args.Append($"-nostdin -y -hide_banner -i \"{inputPath}\" ");
 
             if (config.VideoCodec == VideoCodecPreference.AnimatedGIF)
             {
@@ -61,14 +63,20 @@ public static class VideoAudioCompressor
             else
             {
                 // Video codec selection with CRF quality
-                int crf = (int)(28 - (config.VideoQuality * 10)); // ~18 (high) to 28 (compressed)
+                int crf = (int)(28 - (config.VideoQuality * 10)); // ~18 to 28
                 if (config.VideoCodec == VideoCodecPreference.HEVC)
                 {
-                    args.Append($"-c:v libx265 -crf {crf} -preset medium ");
+                    args.Append($"-c:v libx265 -crf {crf} -preset fast -tag:v hvc1 -pix_fmt yuv420p ");
                 }
                 else
                 {
-                    args.Append($"-c:v libx264 -crf {crf} -preset medium ");
+                    args.Append($"-c:v libx264 -crf {crf} -preset fast -pix_fmt yuv420p ");
+                }
+
+                // Framerate
+                if (config.VideoFramerate > 0)
+                {
+                    args.Append($"-r {config.VideoFramerate} ");
                 }
 
                 // Resolution scale filter
@@ -84,33 +92,76 @@ public static class VideoAudioCompressor
                 }
                 else
                 {
-                    args.Append("-c:a aac -b:a 128k ");
+                    string audioBitrate = config.AudioBitrate switch
+                    {
+                        AudioBitratePreference.K64 => "64k",
+                        AudioBitratePreference.K128 => "128k",
+                        AudioBitratePreference.K256 => "256k",
+                        AudioBitratePreference.K320 => "320k",
+                        _ => "128k"
+                    };
+                    args.Append($"-c:a aac -b:a {audioBitrate} ");
                 }
+
+                // Target Size Limit
+                long? targetBytes = config.TargetSizeMode.GetTargetBytes(config.CustomTargetSizeMB);
+                if (targetBytes.HasValue && targetBytes.Value > 0 && config.TargetSizeMode != TargetSizeMode.Off && config.TargetSizeMode != TargetSizeMode.Manual)
+                {
+                    args.Append($"-fs {targetBytes.Value} ");
+                }
+            }
+
+            // Strip Metadata
+            if (config.StripMetadata)
+            {
+                args.Append("-map_metadata -1 ");
             }
 
             args.Append($"\"{outputPath}\"");
 
-            progress?.Report(0.35);
+            progress?.Report(0.25);
 
-            // Execute FFmpeg
+            // Execute FFmpeg with live progress simulation
+            using var progressCts = new CancellationTokenSource();
+            var progressTask = Task.Run(async () =>
+            {
+                double current = 0.25;
+                while (!progressCts.Token.IsCancellationRequested && current < 0.92)
+                {
+                    await Task.Delay(400, progressCts.Token);
+                    current += 0.05;
+                    progress?.Report(Math.Min(0.92, current));
+                }
+            }, progressCts.Token);
+
             var result = await Cli.Wrap(ffmpeg)
                 .WithArguments(args.ToString())
                 .WithValidation(CommandResultValidation.None)
-                .ExecuteAsync();
+                .ExecuteAsync(cancellationToken);
+
+            progressCts.Cancel();
+            try { await progressTask; } catch { }
 
             progress?.Report(1.0);
 
             if (File.Exists(outputPath))
             {
                 var outFile = new FileInfo(outputPath);
-                return new CompressionResult
+                if (outFile.Length > 1024)
                 {
-                    OriginalPath = inputPath,
-                    OutputPath = outputPath,
-                    OriginalSize = originalSize,
-                    CompressedSize = outFile.Length,
-                    MediaType = MediaType.Video
-                };
+                    return new CompressionResult
+                    {
+                        OriginalPath = inputPath,
+                        OutputPath = outputPath,
+                        OriginalSize = originalSize,
+                        CompressedSize = outFile.Length,
+                        MediaType = MediaType.Video
+                    };
+                }
+                else
+                {
+                    try { File.Delete(outputPath); } catch { }
+                }
             }
 
             return null;
@@ -125,7 +176,8 @@ public static class VideoAudioCompressor
     public static async Task<CompressionResult?> CompressAudioAsync(
         string inputPath,
         CompressionConfiguration config,
-        IProgress<double>? progress = null)
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -170,28 +222,35 @@ public static class VideoAudioCompressor
                 _ => "192k"
             };
 
-            var args = $"-y -i \"{inputPath}\" -c:a aac -b:a {bitrate} \"{outputPath}\"";
+            var args = $"-nostdin -y -hide_banner -i \"{inputPath}\" -c:a aac -b:a {bitrate} {(config.StripMetadata ? "-map_metadata -1 " : "")}\"{outputPath}\"";
 
             progress?.Report(0.35);
 
             var result = await Cli.Wrap(ffmpeg)
                 .WithArguments(args)
                 .WithValidation(CommandResultValidation.None)
-                .ExecuteAsync();
+                .ExecuteAsync(cancellationToken);
 
             progress?.Report(1.0);
 
             if (File.Exists(outputPath))
             {
                 var outFile = new FileInfo(outputPath);
-                return new CompressionResult
+                if (outFile.Length > 1024)
                 {
-                    OriginalPath = inputPath,
-                    OutputPath = outputPath,
-                    OriginalSize = originalSize,
-                    CompressedSize = outFile.Length,
-                    MediaType = MediaType.Audio
-                };
+                    return new CompressionResult
+                    {
+                        OriginalPath = inputPath,
+                        OutputPath = outputPath,
+                        OriginalSize = originalSize,
+                        CompressedSize = outFile.Length,
+                        MediaType = MediaType.Audio
+                    };
+                }
+                else
+                {
+                    try { File.Delete(outputPath); } catch { }
+                }
             }
 
             return null;

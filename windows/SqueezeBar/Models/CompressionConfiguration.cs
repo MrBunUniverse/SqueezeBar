@@ -11,6 +11,7 @@ public class CompressionConfiguration
     public double VideoQuality { get; set; } = 0.70;
     public double VideoResolutionScale { get; set; } = 1.0;
     public VideoCodecPreference VideoCodec { get; set; } = VideoCodecPreference.HEVC;
+    public int VideoFramerate { get; set; } = 0;
     public bool VideoRemoveAudio { get; set; } = false;
 
     public AudioBitratePreference AudioBitrate { get; set; } = AudioBitratePreference.K192;

@@ -193,6 +193,7 @@ public class StagedQueueItem : INotifyPropertyChanged
         config.VideoQuality = CustomQuality;
         config.VideoResolutionScale = CustomResolutionScale;
         config.VideoCodec = CustomVideoCodec;
+        config.VideoFramerate = CustomVideoFramerate;
         config.VideoRemoveAudio = CustomVideoRemoveAudio;
         config.AudioBitrate = CustomAudioBitrate;
         config.PdfDPI = CustomPdfDpi;
