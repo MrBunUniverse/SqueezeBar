@@ -135,10 +135,20 @@ public partial class MainWindow : Window
         StripMetadataCheck.IsCheckedChanged += (s, e) => _state.StripMetadata = StripMetadataCheck.IsChecked ?? true;
 
         // Drag & Drop
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        AddHandler(DragDrop.DragEnterEvent, OnDragEnter);
+        AddHandler(DragDrop.DropEvent, OnWindowDrop);
+
+        DragDrop.SetAllowDrop(QuickDropBorder, true);
         QuickDropBorder.AddHandler(DragDrop.DropEvent, OnQuickDrop);
         QuickDropBorder.AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        QuickDropBorder.AddHandler(DragDrop.DragEnterEvent, OnDragEnter);
+
+        DragDrop.SetAllowDrop(StagedQueueBorder, true);
         StagedQueueBorder.AddHandler(DragDrop.DropEvent, OnStagedDrop);
         StagedQueueBorder.AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        StagedQueueBorder.AddHandler(DragDrop.DragEnterEvent, OnDragEnter);
 
         EmptyQueueHint.IsVisible = _state.StagedQueue.Count == 0;        // Prevent Wine / CrossOver from maximizing into a new macOS Fullscreen Space
         PropertyChanged += (s, e) =>
@@ -464,18 +474,130 @@ public partial class MainWindow : Window
     }
 
     // ── Drag & Drop ──
-    private void OnDragOver(object? sender, DragEventArgs e) => e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None;
+    private static bool HasDropFiles(IDataObject data)
+    {
+        return data.Contains(DataFormats.Files) ||
+               data.Contains(DataFormats.FileNames) ||
+               data.Contains(DataFormats.Text) ||
+               data.GetDataFormats().Any(f => f.IndexOf("File", StringComparison.OrdinalIgnoreCase) >= 0 || f.IndexOf("Drop", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    private static List<string> ExtractDropFiles(IDataObject data)
+    {
+        var list = new List<string>();
+        try
+        {
+            if (data.Contains(DataFormats.Files))
+            {
+                var files = data.GetFiles();
+                if (files != null)
+                {
+                    foreach (var f in files)
+                    {
+                        var p = f.Path.LocalPath;
+                        if (!string.IsNullOrEmpty(p) && (File.Exists(p) || Directory.Exists(p)))
+                            list.Add(p);
+                    }
+                }
+            }
+
+            if (list.Count == 0 && data.Contains(DataFormats.FileNames))
+            {
+                if (data.Get(DataFormats.FileNames) is IEnumerable<string> fileNames)
+                {
+                    foreach (var fn in fileNames)
+                    {
+                        if (!string.IsNullOrEmpty(fn) && (File.Exists(fn) || Directory.Exists(fn)))
+                            list.Add(fn);
+                    }
+                }
+            }
+
+            if (list.Count == 0 && data.Contains(DataFormats.Text))
+            {
+                var txt = data.GetText();
+                if (!string.IsNullOrWhiteSpace(txt))
+                {
+                    var lines = txt.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var line in lines)
+                    {
+                        var clean = line.Trim().Trim('"', '\'');
+                        if (clean.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (Uri.TryCreate(clean, UriKind.Absolute, out var uri))
+                                clean = uri.LocalPath;
+                        }
+                        if (File.Exists(clean) || Directory.Exists(clean))
+                            list.Add(clean);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[DragDrop] Error extracting files: {ex.Message}");
+        }
+        return list;
+    }
+
+    private void OnDragEnter(object? sender, DragEventArgs e)
+    {
+        if (HasDropFiles(e.Data))
+        {
+            e.DragEffects = DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link;
+            e.Handled = true;
+        }
+        else
+        {
+            e.DragEffects = DragDropEffects.None;
+        }
+    }
+
+    private void OnDragOver(object? sender, DragEventArgs e)
+    {
+        if (HasDropFiles(e.Data))
+        {
+            e.DragEffects = DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link;
+            e.Handled = true;
+        }
+        else
+        {
+            e.DragEffects = DragDropEffects.None;
+        }
+    }
+
+    private async void OnWindowDrop(object? sender, DragEventArgs e)
+    {
+        // Fallback drop if dropped on empty space in window
+        if (sender == this)
+        {
+            var files = ExtractDropFiles(e.Data);
+            if (files.Count > 0)
+            {
+                e.Handled = true;
+                await _state.ProcessDroppedFilesImmediatelyAsync(files);
+            }
+        }
+    }
 
     private async void OnQuickDrop(object? sender, DragEventArgs e)
     {
-        var files = e.Data.GetFiles()?.Select(f => f.Path.LocalPath).ToList();
-        if (files is { Count: > 0 }) await _state.ProcessDroppedFilesImmediatelyAsync(files);
+        var files = ExtractDropFiles(e.Data);
+        if (files.Count > 0)
+        {
+            e.Handled = true;
+            await _state.ProcessDroppedFilesImmediatelyAsync(files);
+        }
     }
 
     private void OnStagedDrop(object? sender, DragEventArgs e)
     {
-        var files = e.Data.GetFiles()?.Select(f => f.Path.LocalPath).ToList();
-        if (files is { Count: > 0 }) _state.AddFilesToStagedQueue(files);
+        var files = ExtractDropFiles(e.Data);
+        if (files.Count > 0)
+        {
+            e.Handled = true;
+            _state.AddFilesToStagedQueue(files);
+        }
     }
 
     private void CustomizeItem_Click(object? sender, RoutedEventArgs e)

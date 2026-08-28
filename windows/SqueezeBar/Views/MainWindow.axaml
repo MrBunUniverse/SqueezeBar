@@ -11,6 +11,7 @@
         WindowState="Normal"
         ShowInTaskbar="True"
         WindowStartupLocation="CenterScreen"
+        DragDrop.AllowDrop="True"
         Background="#1A1A1E"
         Foreground="#E8E8ED">
 
