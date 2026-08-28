@@ -51,7 +51,7 @@ public class CompressionResult
     public MediaType MediaType { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
-    public string FileName => Path.GetFileName(OutputPath);
+    public string FileName => !string.IsNullOrEmpty(OutputPath) ? Path.GetFileName(OutputPath) : Path.GetFileName(OriginalPath);
     public long BytesSaved => Math.Max(0, OriginalSize - CompressedSize);
     public double PercentSaved => OriginalSize > 0 ? ((OriginalSize - CompressedSize) / (double)OriginalSize) * 100.0 : 0.0;
 

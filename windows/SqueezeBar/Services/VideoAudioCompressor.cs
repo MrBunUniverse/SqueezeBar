@@ -9,46 +9,6 @@ namespace SqueezeBar.Services;
 
 public static class VideoAudioCompressor
 {
-    public static string ResolveFfmpegPath()
-    {
-        try
-        {
-            // 1. Next to executable
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string localExe = Path.Combine(baseDir, "ffmpeg.exe");
-            if (File.Exists(localExe)) return localExe;
-
-            string localExeNoExt = Path.Combine(baseDir, "ffmpeg");
-            if (File.Exists(localExeNoExt)) return localExeNoExt;
-
-            // 2. Current Working Directory
-            string cwdExe = Path.Combine(Environment.CurrentDirectory, "ffmpeg.exe");
-            if (File.Exists(cwdExe)) return cwdExe;
-
-            // 3. Local AppData SqueezeBar folder
-            string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SqueezeBar", "ffmpeg.exe");
-            if (File.Exists(appData)) return appData;
-
-            // 4. Common Windows paths
-            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string[] commonPaths = new[]
-            {
-                Path.Combine(localAppData, "Microsoft", "WinGet", "Links", "ffmpeg.exe"),
-                @"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
-                @"C:\ffmpeg\bin\ffmpeg.exe",
-                @"C:\tools\ffmpeg\bin\ffmpeg.exe"
-            };
-            foreach (var cp in commonPaths)
-            {
-                if (File.Exists(cp)) return cp;
-            }
-        }
-        catch { }
-
-        // 5. System PATH fallback
-        return "ffmpeg";
-    }
-
     public static async Task<CompressionResult?> CompressVideoAsync(
         string inputPath,
         CompressionConfiguration config,
@@ -57,6 +17,20 @@ public static class VideoAudioCompressor
         try
         {
             if (!File.Exists(inputPath)) return null;
+
+            string? ffmpeg = FfmpegService.Shared.GetFfmpegPath();
+            if (string.IsNullOrEmpty(ffmpeg))
+            {
+                progress?.Report(0.05);
+                bool ok = await FfmpegService.Shared.DownloadFfmpegAsync(new Progress<double>(p => progress?.Report(p * 0.3)));
+                if (ok) ffmpeg = FfmpegService.Shared.GetFfmpegPath();
+            }
+
+            if (string.IsNullOrEmpty(ffmpeg))
+            {
+                System.Diagnostics.Debug.WriteLine("[VideoAudioCompressor] FFmpeg is not available.");
+                return null;
+            }
 
             progress?.Report(0.1);
             var fileInfo = new FileInfo(inputPath);
@@ -116,9 +90,7 @@ public static class VideoAudioCompressor
 
             args.Append($"\"{outputPath}\"");
 
-            progress?.Report(0.3);
-
-            string ffmpeg = ResolveFfmpegPath();
+            progress?.Report(0.35);
 
             // Execute FFmpeg
             var result = await Cli.Wrap(ffmpeg)
@@ -159,6 +131,20 @@ public static class VideoAudioCompressor
         {
             if (!File.Exists(inputPath)) return null;
 
+            string? ffmpeg = FfmpegService.Shared.GetFfmpegPath();
+            if (string.IsNullOrEmpty(ffmpeg))
+            {
+                progress?.Report(0.05);
+                bool ok = await FfmpegService.Shared.DownloadFfmpegAsync(new Progress<double>(p => progress?.Report(p * 0.3)));
+                if (ok) ffmpeg = FfmpegService.Shared.GetFfmpegPath();
+            }
+
+            if (string.IsNullOrEmpty(ffmpeg))
+            {
+                System.Diagnostics.Debug.WriteLine("[VideoAudioCompressor Audio] FFmpeg is not available.");
+                return null;
+            }
+
             progress?.Report(0.1);
             var fileInfo = new FileInfo(inputPath);
             long originalSize = fileInfo.Length;
@@ -186,9 +172,7 @@ public static class VideoAudioCompressor
 
             var args = $"-y -i \"{inputPath}\" -c:a aac -b:a {bitrate} \"{outputPath}\"";
 
-            progress?.Report(0.3);
-
-            string ffmpeg = ResolveFfmpegPath();
+            progress?.Report(0.35);
 
             var result = await Cli.Wrap(ffmpeg)
                 .WithArguments(args)

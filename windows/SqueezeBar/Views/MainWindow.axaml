@@ -540,9 +540,10 @@
                     <!-- Active Processing Jobs -->
                     <Border x:Name="ActiveJobsBorder" Background="#1F1F23" CornerRadius="10" Padding="12" BorderBrush="#27272B" BorderThickness="0.5" IsVisible="False">
                         <StackPanel Spacing="7">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="CURRENT QUEUE" FontSize="9" FontWeight="Bold" Foreground="#6B6B78" FontFamily="Georgia, 'Times New Roman', serif"/>
-                                <Button Grid.Column="1" Padding="0" Background="Transparent" BorderThickness="0" Click="CancelAllJobs_Click">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <TextBlock Text="CURRENT QUEUE" FontSize="9" FontWeight="Bold" Foreground="#6B6B78" FontFamily="Georgia, 'Times New Roman', serif" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="Clear" FontSize="9" Background="Transparent" Foreground="#6B6B78" Padding="4,2" Margin="0,0,4,0" Click="ClearCompletedJobs_Click" BorderThickness="0"/>
+                                <Button Grid.Column="2" Padding="0" Background="Transparent" BorderThickness="0" Click="CancelAllJobs_Click">
                                     <Border Background="#312023" CornerRadius="10" Padding="6,2.5" BorderBrush="#3D2528" BorderThickness="0.5">
                                         <TextBlock Text="Cancel All" FontSize="9" FontWeight="SemiBold" Foreground="#EF5350"/>
                                     </Border>

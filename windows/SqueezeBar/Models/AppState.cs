@@ -420,6 +420,13 @@ public class AppState : INotifyPropertyChanged
         IsProcessing = false;
     }
 
+    public void ClearCompletedJobs()
+    {
+        var completed = ActiveJobs.Where(x => x.IsCompleted).ToList();
+        foreach (var c in completed) ActiveJobs.Remove(c);
+        OnPropertyChanged(nameof(IsProcessing));
+    }
+
     public void CancelJob(Guid jobId)
     {
         var job = ActiveJobs.FirstOrDefault(x => x.Id == jobId);

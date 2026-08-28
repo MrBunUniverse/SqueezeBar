@@ -47,7 +47,7 @@ public partial class MainWindow : Window
             else if (e.PropertyName == nameof(_state.IsProcessing))
             {
                 ProcessingBadge.IsVisible = _state.IsProcessing;
-                ActiveJobsBorder.IsVisible = _state.ActiveJobs.Any(j => !j.IsCompleted);
+                ActiveJobsBorder.IsVisible = _state.ActiveJobs.Count > 0;
                 FooterStatusText.Text = _state.IsProcessing ? "Optimizing..." : "Ready";
             }
             else if (e.PropertyName == nameof(_state.ImageSummaryText) ||
@@ -700,6 +700,7 @@ public partial class MainWindow : Window
     private async void SqueezeAll_Click(object? sender, RoutedEventArgs e) => await _state.ProcessStagedQueueAsync();
     private void CancelSingleJob_Click(object? sender, RoutedEventArgs e) { if (sender is Button btn && btn.Tag is Guid id) _state.CancelJob(id); }
     private void CancelAllJobs_Click(object? sender, RoutedEventArgs e) => _state.CancelAllJobs();
+    private void ClearCompletedJobs_Click(object? sender, RoutedEventArgs e) => _state.ClearCompletedJobs();
 
     private void OpenFolder_Click(object? sender, RoutedEventArgs e)
     {
