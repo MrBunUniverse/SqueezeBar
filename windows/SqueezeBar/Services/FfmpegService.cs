@@ -37,7 +37,22 @@ public class FfmpegService
             string cwdExe = Path.Combine(Environment.CurrentDirectory, "ffmpeg.exe");
             if (File.Exists(cwdExe)) return cwdExe;
 
-            // 4. Common Package Manager / System Paths
+            // 4. CrossOver / Wine Host macOS paths
+            string[] crossOverPaths = new[]
+            {
+                @"Z:\opt\homebrew\bin\ffmpeg",
+                @"Z:\usr\local\bin\ffmpeg",
+                @"Z:\usr\bin\ffmpeg",
+                "/opt/homebrew/bin/ffmpeg",
+                "/usr/local/bin/ffmpeg",
+                "/usr/bin/ffmpeg"
+            };
+            foreach (var cp in crossOverPaths)
+            {
+                if (File.Exists(cp)) return cp;
+            }
+
+            // 5. Common Package Manager / System Paths
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string[] commonPaths = new[]
             {
@@ -51,7 +66,7 @@ public class FfmpegService
                 if (File.Exists(cp)) return cp;
             }
 
-            // 5. Check if 'ffmpeg' works in PATH
+            // 6. Check if 'ffmpeg' works in PATH
             using var proc = Process.Start(new ProcessStartInfo
             {
                 FileName = "ffmpeg",

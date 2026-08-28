@@ -65,14 +65,19 @@ public class MediaCompressionEngine
         return result;
     }
 
-    public async Task<CompressionResult?> CompressFileAsync(string path, CompressionConfiguration config, IProgress<double>? progress = null)
+    public async Task<CompressionResult?> CompressFileAsync(
+        string path,
+        CompressionConfiguration config,
+        IProgress<double>? progress = null,
+        System.Threading.CancellationToken cancellationToken = default)
     {
         var type = ClassifyFile(path);
         return type switch
         {
             MediaType.Image => await ImageCompressor.CompressImageAsync(path, config, progress),
-            MediaType.Video => await VideoAudioCompressor.CompressVideoAsync(path, config, progress),
-            MediaType.Audio => await VideoAudioCompressor.CompressAudioAsync(path, config, progress),
+            MediaType.Video => await VideoAudioCompressor.CompressVideoAsync(path, config, progress, cancellationToken),
+            MediaType.Audio => await VideoAudioCompressor.CompressAudioAsync(path, config, progress, cancellationToken),
+            MediaType.Pdf => await PdfCompressor.CompressPdfAsync(path, config, progress, cancellationToken),
             _ => null
         };
     }

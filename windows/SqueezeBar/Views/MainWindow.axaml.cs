@@ -482,13 +482,22 @@ public partial class MainWindow : Window
         {
             if (Uri.TryCreate(clean, UriKind.Absolute, out var uri))
                 clean = uri.LocalPath;
+            else
+                clean = clean.Substring(7);
         }
         try
         {
             clean = Uri.UnescapeDataString(clean);
         }
         catch { }
-        return clean;
+
+        if (clean.Length >= 3 && clean[0] == '/' && char.IsLetter(clean[1]) && clean[2] == ':')
+        {
+            clean = clean.Substring(1);
+        }
+
+        clean = clean.Replace('/', Path.DirectorySeparatorChar);
+        return clean.Trim();
     }
 
     private static bool HasDropFiles(IDataObject data)

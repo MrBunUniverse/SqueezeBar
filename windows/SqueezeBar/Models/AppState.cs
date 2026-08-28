@@ -362,10 +362,14 @@ public class AppState : INotifyPropertyChanged
             var itemConfig = item.BuildConfiguration(baseConfig);
             var progress = new Progress<double>(p => job.Progress = p);
 
-            var result = await Task.Run(() => MediaCompressionEngine.Shared.CompressFileAsync(item.FilePath, itemConfig, progress));
+            var result = await Task.Run(() => MediaCompressionEngine.Shared.CompressFileAsync(item.FilePath, itemConfig, progress, job.Cts.Token));
 
             job.IsCompleted = true;
-            if (result != null)
+            if (job.StatusText == "Cancelled")
+            {
+                // Kept as Cancelled
+            }
+            else if (result != null)
             {
                 job.StatusText = "Complete";
                 History.Insert(0, result);
@@ -401,10 +405,14 @@ public class AppState : INotifyPropertyChanged
             ActiveJobs.Insert(0, job);
 
             var progress = new Progress<double>(p => job.Progress = p);
-            var result = await Task.Run(() => MediaCompressionEngine.Shared.CompressFileAsync(path, config, progress));
+            var result = await Task.Run(() => MediaCompressionEngine.Shared.CompressFileAsync(path, config, progress, job.Cts.Token));
 
             job.IsCompleted = true;
-            if (result != null)
+            if (job.StatusText == "Cancelled")
+            {
+                // Kept as Cancelled
+            }
+            else if (result != null)
             {
                 job.StatusText = "Complete";
                 History.Insert(0, result);
@@ -432,6 +440,7 @@ public class AppState : INotifyPropertyChanged
         var job = ActiveJobs.FirstOrDefault(x => x.Id == jobId);
         if (job != null)
         {
+            try { job.Cts.Cancel(); } catch { }
             job.IsCompleted = true;
             job.StatusText = "Cancelled";
         }
@@ -441,6 +450,7 @@ public class AppState : INotifyPropertyChanged
     {
         foreach (var job in ActiveJobs.Where(x => !x.IsCompleted))
         {
+            try { job.Cts.Cancel(); } catch { }
             job.IsCompleted = true;
             job.StatusText = "Cancelled";
         }

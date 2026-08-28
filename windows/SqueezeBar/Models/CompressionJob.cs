@@ -32,6 +32,8 @@ public class CompressionJob : INotifyPropertyChanged
         set { _isCompleted = value; OnPropertyChanged(); }
     }
 
+    public System.Threading.CancellationTokenSource Cts { get; } = new();
+
     public string FileName => Path.GetFileName(FilePath);
 
     public event PropertyChangedEventHandler? PropertyChanged;

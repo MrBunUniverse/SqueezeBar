@@ -1,6 +1,8 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using CliWrap;
@@ -10,6 +12,33 @@ namespace SqueezeBar.Services;
 
 public static class VideoAudioCompressor
 {
+    private static readonly Regex DurationRegex = new(@"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", RegexOptions.Compiled);
+    private static readonly Regex TimeProgressRegex = new(@"time=(\d+):(\d+):(\d+\.?\d*)", RegexOptions.Compiled);
+
+    public static async Task<double> ProbeDurationAsync(string ffmpeg, string inputPath, CancellationToken ct = default)
+    {
+        try
+        {
+            var output = new StringBuilder();
+            await Cli.Wrap(ffmpeg)
+                .WithArguments($"-nostdin -hide_banner -i \"{inputPath}\"")
+                .WithValidation(CommandResultValidation.None)
+                .WithStandardErrorPipe(PipeTarget.ToStringBuilder(output))
+                .ExecuteAsync(ct);
+
+            var match = DurationRegex.Match(output.ToString());
+            if (match.Success)
+            {
+                double hours = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                double minutes = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                double seconds = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+                return (hours * 3600) + (minutes * 60) + seconds;
+            }
+        }
+        catch { }
+        return 0;
+    }
+
     public static async Task<CompressionResult?> CompressVideoAsync(
         string inputPath,
         CompressionConfiguration config,
@@ -34,9 +63,12 @@ public static class VideoAudioCompressor
                 return null;
             }
 
-            progress?.Report(0.1);
+            progress?.Report(0.05);
             var fileInfo = new FileInfo(inputPath);
             long originalSize = fileInfo.Length;
+
+            double duration = await ProbeDurationAsync(ffmpeg, inputPath, cancellationToken);
+            progress?.Report(0.10);
 
             string dir = Path.GetDirectoryName(inputPath) ?? "";
             string nameWithoutExt = Path.GetFileNameWithoutExtension(inputPath);
@@ -56,21 +88,44 @@ public static class VideoAudioCompressor
 
             if (config.VideoCodec == VideoCodecPreference.AnimatedGIF)
             {
-                int fps = 15;
+                int fps = config.VideoFramerate > 0 ? config.VideoFramerate : 15;
                 int scaleWidth = (int)(1280 * config.VideoResolutionScale);
                 args.Append($"-vf \"fps={fps},scale={scaleWidth}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" ");
             }
             else
             {
-                // Video codec selection with CRF quality
-                int crf = (int)(28 - (config.VideoQuality * 10)); // ~18 to 28
-                if (config.VideoCodec == VideoCodecPreference.HEVC)
+                // Target Size Limit calculation vs Manual CRF
+                long? targetBytes = config.TargetSizeMode.GetTargetBytes(config.CustomTargetSizeMB);
+                bool hasTargetLimit = targetBytes.HasValue && targetBytes.Value > 0 &&
+                                      config.TargetSizeMode != TargetSizeMode.Off &&
+                                      config.TargetSizeMode != TargetSizeMode.Manual;
+
+                if (hasTargetLimit && duration > 0.5)
                 {
-                    args.Append($"-c:v libx265 -crf {crf} -preset fast -tag:v hvc1 -pix_fmt yuv420p ");
+                    double totalBits = targetBytes!.Value * 8.0 * 0.93; // 7% container/audio margin
+                    int audioK = config.VideoRemoveAudio ? 0 : 96;
+                    int videoK = Math.Max(80, (int)((totalBits / duration / 1000.0) - audioK));
+
+                    if (config.VideoCodec == VideoCodecPreference.HEVC)
+                    {
+                        args.Append($"-c:v libx265 -b:v {videoK}k -maxrate {(int)(videoK * 1.3)}k -bufsize {(int)(videoK * 2)}k -preset fast -tag:v hvc1 -pix_fmt yuv420p ");
+                    }
+                    else
+                    {
+                        args.Append($"-c:v libx264 -b:v {videoK}k -maxrate {(int)(videoK * 1.3)}k -bufsize {(int)(videoK * 2)}k -preset fast -pix_fmt yuv420p ");
+                    }
                 }
                 else
                 {
-                    args.Append($"-c:v libx264 -crf {crf} -preset fast -pix_fmt yuv420p ");
+                    int crf = (int)(28 - (config.VideoQuality * 10)); // 18 to 28
+                    if (config.VideoCodec == VideoCodecPreference.HEVC)
+                    {
+                        args.Append($"-c:v libx265 -crf {crf} -preset fast -tag:v hvc1 -pix_fmt yuv420p ");
+                    }
+                    else
+                    {
+                        args.Append($"-c:v libx264 -crf {crf} -preset fast -pix_fmt yuv420p ");
+                    }
                 }
 
                 // Framerate
@@ -103,15 +158,11 @@ public static class VideoAudioCompressor
                     args.Append($"-c:a aac -b:a {audioBitrate} ");
                 }
 
-                // Target Size Limit
-                long? targetBytes = config.TargetSizeMode.GetTargetBytes(config.CustomTargetSizeMB);
-                if (targetBytes.HasValue && targetBytes.Value > 0 && config.TargetSizeMode != TargetSizeMode.Off && config.TargetSizeMode != TargetSizeMode.Manual)
-                {
-                    args.Append($"-fs {targetBytes.Value} ");
-                }
+                // Web / Discord streaming faststart
+                args.Append("-movflags +faststart ");
             }
 
-            // Strip Metadata
+            // Strip EXIF / GPS metadata
             if (config.StripMetadata)
             {
                 args.Append("-map_metadata -1 ");
@@ -119,28 +170,30 @@ public static class VideoAudioCompressor
 
             args.Append($"\"{outputPath}\"");
 
-            progress?.Report(0.25);
+            progress?.Report(0.15);
 
-            // Execute FFmpeg with live progress simulation
-            using var progressCts = new CancellationTokenSource();
-            var progressTask = Task.Run(async () =>
+            var stdErrPipe = PipeTarget.ToDelegate(line =>
             {
-                double current = 0.25;
-                while (!progressCts.Token.IsCancellationRequested && current < 0.92)
+                if (duration > 0)
                 {
-                    await Task.Delay(400, progressCts.Token);
-                    current += 0.05;
-                    progress?.Report(Math.Min(0.92, current));
+                    var match = TimeProgressRegex.Match(line);
+                    if (match.Success)
+                    {
+                        double h = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                        double m = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                        double s = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+                        double currentSecs = (h * 3600) + (m * 60) + s;
+                        double pct = Math.Clamp(0.15 + (0.80 * (currentSecs / duration)), 0.15, 0.95);
+                        progress?.Report(pct);
+                    }
                 }
-            }, progressCts.Token);
+            });
 
-            var result = await Cli.Wrap(ffmpeg)
+            await Cli.Wrap(ffmpeg)
                 .WithArguments(args.ToString())
+                .WithStandardErrorPipe(stdErrPipe)
                 .WithValidation(CommandResultValidation.None)
                 .ExecuteAsync(cancellationToken);
-
-            progressCts.Cancel();
-            try { await progressTask; } catch { }
 
             progress?.Report(1.0);
 
@@ -164,6 +217,10 @@ public static class VideoAudioCompressor
                 }
             }
 
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
             return null;
         }
         catch (Exception ex)
@@ -197,9 +254,12 @@ public static class VideoAudioCompressor
                 return null;
             }
 
-            progress?.Report(0.1);
+            progress?.Report(0.05);
             var fileInfo = new FileInfo(inputPath);
             long originalSize = fileInfo.Length;
+
+            double duration = await ProbeDurationAsync(ffmpeg, inputPath, cancellationToken);
+            progress?.Report(0.15);
 
             string dir = Path.GetDirectoryName(inputPath) ?? "";
             string nameWithoutExt = Path.GetFileNameWithoutExtension(inputPath);
@@ -222,12 +282,28 @@ public static class VideoAudioCompressor
                 _ => "192k"
             };
 
-            var args = $"-nostdin -y -hide_banner -i \"{inputPath}\" -c:a aac -b:a {bitrate} {(config.StripMetadata ? "-map_metadata -1 " : "")}\"{outputPath}\"";
+            var args = $"-nostdin -y -hide_banner -i \"{inputPath}\" -c:a aac -b:a {bitrate} {(config.StripMetadata ? "-map_metadata -1 " : "")}-movflags +faststart \"{outputPath}\"";
 
-            progress?.Report(0.35);
+            var stdErrPipe = PipeTarget.ToDelegate(line =>
+            {
+                if (duration > 0)
+                {
+                    var match = TimeProgressRegex.Match(line);
+                    if (match.Success)
+                    {
+                        double h = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                        double m = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                        double s = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+                        double currentSecs = (h * 3600) + (m * 60) + s;
+                        double pct = Math.Clamp(0.15 + (0.80 * (currentSecs / duration)), 0.15, 0.95);
+                        progress?.Report(pct);
+                    }
+                }
+            });
 
-            var result = await Cli.Wrap(ffmpeg)
+            await Cli.Wrap(ffmpeg)
                 .WithArguments(args)
+                .WithStandardErrorPipe(stdErrPipe)
                 .WithValidation(CommandResultValidation.None)
                 .ExecuteAsync(cancellationToken);
 
@@ -253,6 +329,10 @@ public static class VideoAudioCompressor
                 }
             }
 
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
             return null;
         }
         catch (Exception ex)
