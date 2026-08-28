@@ -12,10 +12,10 @@
     <Window.Resources>
         <x:Double x:Key="SliderThumbWidth">11</x:Double>
         <x:Double x:Key="SliderThumbHeight">11</x:Double>
-        <x:Double x:Key="SliderThumbWidthPointerOver">12</x:Double>
-        <x:Double x:Key="SliderThumbHeightPointerOver">12</x:Double>
-        <x:Double x:Key="SliderThumbWidthPressed">12</x:Double>
-        <x:Double x:Key="SliderThumbHeightPressed">12</x:Double>
+        <x:Double x:Key="SliderThumbWidthPointerOver">11</x:Double>
+        <x:Double x:Key="SliderThumbHeightPointerOver">11</x:Double>
+        <x:Double x:Key="SliderThumbWidthPressed">11</x:Double>
+        <x:Double x:Key="SliderThumbHeightPressed">11</x:Double>
     </Window.Resources>
 
     <Window.Styles>
