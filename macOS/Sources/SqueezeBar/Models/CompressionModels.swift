@@ -49,6 +49,104 @@ public enum UIScaleOption: String, Codable, Sendable, CaseIterable {
     }
 }
 
+// MARK: - DropBall Animation Style
+public enum DropBallAnimationStyle: String, Codable, Sendable, CaseIterable, Identifiable {
+    case calm = "Calm"
+    case standard = "Standard"
+    case exaggerated = "Exaggerated"
+    
+    public var id: String { rawValue }
+    
+    public var icon: String {
+        switch self {
+        case .calm: return "leaf.fill"
+        case .standard: return "drop.fill"
+        case .exaggerated: return "sparkles"
+        }
+    }
+    
+    public var description: String {
+        switch self {
+        case .calm: return "Soft, minimal ease with gentle edge tucking"
+        case .standard: return "Crisp, balanced liquid glass bounce"
+        case .exaggerated: return "Exaggerated fluid spring with juicy jelly bounce"
+        }
+    }
+}
+
+// MARK: - DropBall Glass Style (Templates)
+public enum DropBallGlassStyle: String, Codable, Sendable, CaseIterable, Identifiable {
+    case superClear = "Crystal Clear"
+    case balanced = "Balanced"
+    case opaque = "High Contrast"
+    
+    public var id: String { rawValue }
+    
+    public var icon: String {
+        switch self {
+        case .superClear: return "sparkles"
+        case .balanced: return "circle.lefthalf.filled"
+        case .opaque: return "circle.fill"
+        }
+    }
+    
+    public var description: String {
+        switch self {
+        case .superClear: return "100% transparent crystal glass with pure optical dispersion"
+        case .balanced: return "Frosted liquid glass with gentle ambient depth"
+        case .opaque: return "Deep obsidian dark glass for maximum contrast"
+        }
+    }
+    
+    public var clarity: Double {
+        switch self {
+        case .superClear: return 1.00    // 0% dark tint (100% transparent)
+        case .balanced: return 0.50      // 42% dark tint
+        case .opaque: return 0.05        // 80% solid dark tint
+        }
+    }
+    
+    public var frost: Double {
+        switch self {
+        case .superClear: return 0.00    // Pure crystalline clear
+        case .balanced: return 0.12      // Soft milky frosted diffusion
+        case .opaque: return 0.28        // Dense frosted body
+        }
+    }
+    
+    public var depth: Double {
+        switch self {
+        case .superClear: return 0.04    // Minimal gradient for maximum refraction
+        case .balanced: return 0.22      // Balanced 3D convex depth
+        case .opaque: return 0.40        // Smooth dark body
+        }
+    }
+    
+    public var sheen: Double {
+        switch self {
+        case .superClear: return 0.28    // Bright crystalline caustic glare
+        case .balanced: return 0.14      // Soft ambient top sheen
+        case .opaque: return 0.00        // No edge glare/sheen highlight
+        }
+    }
+    
+    public var rim: Double {
+        switch self {
+        case .superClear: return 0.35    // Razor-sharp luminous rim
+        case .balanced: return 0.24      // Natural subtle border
+        case .opaque: return 0.00        // No edge highlight border
+        }
+    }
+    
+    public var rimWidth: CGFloat {
+        switch self {
+        case .superClear: return 0.75
+        case .balanced: return 1.00
+        case .opaque: return 0.00        // Zero width border
+        }
+    }
+}
+
 // MARK: - Accent Color Theme
 public enum AccentColorTheme: String, Codable, Sendable, CaseIterable {
     case custom = "Custom"

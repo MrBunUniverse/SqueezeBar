@@ -16,6 +16,10 @@ public final class StatusBarController: NSObject {
     private var popover: NSPopover!
     private var eventMonitor: Any?
     
+    public var window: NSWindow? {
+        return popover?.contentViewController?.view.window
+    }
+    
     // MARK: - Init
     public override init() {
         super.init()
@@ -137,12 +141,20 @@ public final class StatusBarController: NSObject {
                 window.level = .floating
             }
             
-            // Monitor clicks outside to dismiss (only if not pinned)
+            // Monitor clicks outside to dismiss (only if not pinned and not clicking on Color Panel)
             eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 guard let self = self else { return }
-                if !AppState.shared.isPinned {
-                    self.closePopover(sender: nil)
+                guard !AppState.shared.isPinned else { return }
+                
+                // If NSColorPanel is open and the click is inside its window frame, keep popover open
+                if NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible {
+                    let mousePoint = NSEvent.mouseLocation
+                    if NSPointInRect(mousePoint, NSColorPanel.shared.frame) {
+                        return
+                    }
                 }
+                
+                self.closePopover(sender: nil)
             }
         }
     }
@@ -154,7 +166,20 @@ public final class StatusBarController: NSObject {
         }
     }
     
+    public func onColorPanelOpen() {
+        popover?.behavior = .applicationDefined
+    }
+    
+    public func onColorPanelClose() {
+        if !AppState.shared.isPinned {
+            popover?.behavior = .transient
+        }
+    }
+    
     public func closePopover(sender: Any?) {
+        if NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible {
+            CustomColorPanelManager.shared.close()
+        }
         if popover.isShown {
             popover.performClose(sender)
         }
@@ -183,6 +208,14 @@ public final class StatusBarController: NSObject {
         detachItem.target = self
         menu.addItem(detachItem)
         
+        let ballItem = NSMenuItem(
+            title: AppState.shared.floatingBallEnabled ? "Hide Desktop Drop Ball" : "Show Desktop Drop Ball",
+            action: #selector(menuToggleFloatingBall),
+            keyEquivalent: "b"
+        )
+        ballItem.target = self
+        menu.addItem(ballItem)
+        
         let clearItem = NSMenuItem(title: "Clear Compression History", action: #selector(menuClearHistory), keyEquivalent: "")
         clearItem.target = self
         menu.addItem(clearItem)
@@ -208,6 +241,10 @@ public final class StatusBarController: NSObject {
     
     @objc private func menuToggleDetach() {
         FloatingDropWindowController.shared.toggleWindow()
+    }
+    
+    @objc private func menuToggleFloatingBall() {
+        AppState.shared.floatingBallEnabled.toggle()
     }
     
     @objc private func menuClearHistory() {

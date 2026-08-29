@@ -16,6 +16,7 @@ public final class LiquidBallModel: ObservableObject {
     @Published public var scaleY: CGFloat = 1.0
     @Published public var rotationAngle: Double = 0.0
     @Published public var isMoving: Bool = false
+    @Published public var isHovered: Bool = false
     @Published public var dockEdge: DockEdge = .right
     @Published public var isTucked: Bool = true
     
@@ -27,9 +28,17 @@ public final class LiquidBallModel: ObservableObject {
         cancelTuckTimer()
         
         let speed = sqrt(dx * dx + dy * dy)
-        let intensity = min(1.0, speed / 24.0)
+        let intensity = min(1.0, speed / 20.0)
         let absDx = abs(dx)
         let absDy = abs(dy)
+        let style = AppState.shared.dropBallAnimationStyle
+        
+        let stretchFactor: CGFloat
+        switch style {
+        case .calm: stretchFactor = 0.12
+        case .standard: stretchFactor = 0.24
+        case .exaggerated: stretchFactor = 0.42
+        }
         
         var targetScaleX: CGFloat = 1.0
         var targetScaleY: CGFloat = 1.0
@@ -37,17 +46,17 @@ public final class LiquidBallModel: ObservableObject {
         
         if absDx >= absDy {
             // Horizontal drag: stretch wide, squash tall
-            targetScaleX = 1.0 + (0.24 * intensity)
-            targetScaleY = 1.0 - (0.14 * intensity)
-            targetAngle = Double(dx > 0 ? 5.0 : -5.0) * intensity
+            targetScaleX = 1.0 + (stretchFactor * intensity)
+            targetScaleY = 1.0 - (stretchFactor * 0.6 * intensity)
+            targetAngle = Double(dx > 0 ? 6.0 : -6.0) * intensity
         } else {
             // Vertical drag: stretch tall, squash wide
-            targetScaleX = 1.0 - (0.14 * intensity)
-            targetScaleY = 1.0 + (0.24 * intensity)
-            targetAngle = Double(dx * 0.15)
+            targetScaleX = 1.0 - (stretchFactor * 0.6 * intensity)
+            targetScaleY = 1.0 + (stretchFactor * intensity)
+            targetAngle = Double(dx * 0.18)
         }
         
-        withAnimation(.interactiveSpring(response: 0.16, dampingFraction: 0.70)) {
+        withAnimation(.interactiveSpring(response: 0.14, dampingFraction: 0.64)) {
             self.scaleX = targetScaleX
             self.scaleY = targetScaleY
             self.rotationAngle = targetAngle
@@ -56,7 +65,13 @@ public final class LiquidBallModel: ObservableObject {
     
     public func releaseMotion() {
         isMoving = false
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.56, blendDuration: 0.1)) {
+        let spring: Animation
+        switch AppState.shared.dropBallAnimationStyle {
+        case .calm: spring = .spring(response: 0.38, dampingFraction: 0.82)
+        case .standard: spring = .spring(response: 0.35, dampingFraction: 0.60, blendDuration: 0.05)
+        case .exaggerated: spring = .spring(response: 0.42, dampingFraction: 0.42, blendDuration: 0.08)
+        }
+        withAnimation(spring) {
             self.scaleX = 1.0
             self.scaleY = 1.0
             self.rotationAngle = 0.0
@@ -65,7 +80,13 @@ public final class LiquidBallModel: ObservableObject {
     
     public func revealFromTuck() {
         cancelTuckTimer()
-        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+        let spring: Animation
+        switch AppState.shared.dropBallAnimationStyle {
+        case .calm: spring = .spring(response: 0.38, dampingFraction: 0.82)
+        case .standard: spring = .spring(response: 0.35, dampingFraction: 0.58, blendDuration: 0.05)
+        case .exaggerated: spring = .spring(response: 0.40, dampingFraction: 0.44, blendDuration: 0.08)
+        }
+        withAnimation(spring) {
             self.isTucked = false
         }
     }
@@ -75,8 +96,14 @@ public final class LiquidBallModel: ObservableObject {
         tuckTimerTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(afterSeconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            if !self.isMoving && !AppState.shared.isProcessing {
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.74)) {
+            if !self.isMoving && !AppState.shared.isProcessing && !self.isHovered {
+                let spring: Animation
+                switch AppState.shared.dropBallAnimationStyle {
+                case .calm: spring = .spring(response: 0.45, dampingFraction: 0.88)
+                case .standard: spring = .spring(response: 0.40, dampingFraction: 0.72)
+                case .exaggerated: spring = .spring(response: 0.44, dampingFraction: 0.56)
+                }
+                withAnimation(spring) {
                     self.isTucked = true
                 }
             }
@@ -115,18 +142,21 @@ public final class FloatingBallHostingView: NSHostingView<FloatingBallView> {
     
     public override func mouseEntered(with event: NSEvent) {
         Task { @MainActor in
+            LiquidBallModel.shared.isHovered = true
             LiquidBallModel.shared.revealFromTuck()
         }
     }
     
     public override func mouseMoved(with event: NSEvent) {
         Task { @MainActor in
+            LiquidBallModel.shared.isHovered = true
             LiquidBallModel.shared.revealFromTuck()
         }
     }
     
     public override func mouseExited(with event: NSEvent) {
         Task { @MainActor in
+            LiquidBallModel.shared.isHovered = false
             LiquidBallModel.shared.scheduleAutoTuck(afterSeconds: 1.8)
         }
     }
@@ -190,7 +220,7 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
     public static let shared = FloatingBallController()
     
     private var ballPanel: NSPanel?
-    private let ballSize: CGFloat = 100
+    private let ballSize: CGFloat = 160
     private var snapTimer: Timer?
     
     private struct Keys {
@@ -232,9 +262,11 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
         let dockEdge: LiquidBallModel.DockEdge = (ballCenter.x < visibleFrame.midX) ? .left : .right
         LiquidBallModel.shared.dockEdge = dockEdge
         
-        // Target physical coordinate anchored right to the monitor border
-        let targetX: CGFloat = (dockEdge == .left) ? visibleFrame.minX - 22 : visibleFrame.maxX - ballSize + 22
-        let targetY: CGFloat = max(visibleFrame.minY + 12, min(visibleFrame.maxY - ballSize - 12, currentOrigin.y))
+        // In 160x160 canvas: 58px orb is centered at x=80, spanning [51, 109].
+        // Left dock anchors left orb edge (51) to screen minX: targetX = minX - 51
+        // Right dock anchors right orb edge (109) to screen maxX: targetX = maxX - 109
+        let targetX: CGFloat = (dockEdge == .left) ? visibleFrame.minX - 51 : visibleFrame.maxX - 109
+        let targetY: CGFloat = max(visibleFrame.minY + 20, min(visibleFrame.maxY - ballSize - 20, currentOrigin.y))
         let targetOrigin = CGPoint(x: targetX, y: targetY)
         
         // Smooth frame interpolation animation
@@ -281,10 +313,10 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
             createPanel()
         }
         
+        ballPanel?.level = .floating
         ballPanel?.orderFrontRegardless()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            self.snapToNearestScreenEdge()
-        }
+        LiquidBallModel.shared.isTucked = true
+        snapToNearestScreenEdge()
     }
     
     public func hide() {
@@ -322,15 +354,18 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.ignoresMouseEvents = false
         panel.delegate = self
         
         let hostingView = FloatingBallHostingView(rootView: FloatingBallView())
         hostingView.frame = NSRect(x: 0, y: 0, width: ballSize, height: ballSize)
+        hostingView.autoresizingMask = [.width, .height]
+        hostingView.wantsLayer = true
         panel.contentView = hostingView
         
         self.ballPanel = panel
@@ -345,13 +380,18 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
         let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         
         let savedY = UserDefaults.standard.double(forKey: Keys.ballOriginY)
-        let initialY = savedY > 0 ? CGFloat(savedY) : (visibleFrame.midY - (ballSize / 2))
+        let initialY: CGFloat
+        if savedY > visibleFrame.minY + 20 && savedY < visibleFrame.maxY - ballSize - 20 {
+            initialY = CGFloat(savedY)
+        } else {
+            initialY = visibleFrame.midY - (ballSize / 2)
+        }
         
         let rawEdge = UserDefaults.standard.string(forKey: Keys.dockEdge) ?? "right"
         let dockEdge = LiquidBallModel.DockEdge(rawValue: rawEdge) ?? .right
         LiquidBallModel.shared.dockEdge = dockEdge
         
-        let initialX: CGFloat = (dockEdge == .left) ? visibleFrame.minX - 22 : visibleFrame.maxX - ballSize + 22
+        let initialX: CGFloat = (dockEdge == .left) ? visibleFrame.minX - 51 : visibleFrame.maxX - 109
         
         return NSRect(x: initialX, y: initialY, width: ballSize, height: ballSize)
     }

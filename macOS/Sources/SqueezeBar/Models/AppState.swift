@@ -65,6 +65,13 @@ public final class AppState: ObservableObject {
         static let soundTheme = "squeezebar.soundTheme"
         static let uiScale = "squeezebar.uiScale"
         static let floatingBallEnabled = "squeezebar.floatingBallEnabled"
+        static let dropBallAnimationStyle = "squeezebar.dropBallAnimationStyle"
+        static let dropBallGlassStyle = "squeezebar.dropBallGlassStyle"
+        static let dropBallFrost = "squeezebar.dropBallFrost"
+        static let dropBallClarity = "squeezebar.dropBallClarity"
+        static let dropBallDepth = "squeezebar.dropBallDepth"
+        static let dropBallSheen = "squeezebar.dropBallSheen"
+        static let dropBallRim = "squeezebar.dropBallRim"
     }
     
     // MARK: - Desktop Floating Drop Ball
@@ -75,6 +82,46 @@ public final class AppState: ObservableObject {
                 FloatingBallController.shared.updateVisibility()
             }
         }
+    }
+    
+    // MARK: - DropBall Animation Style (Calm / Standard / Exaggerated)
+    @Published public var dropBallAnimationStyle: DropBallAnimationStyle {
+        didSet {
+            UserDefaults.standard.set(dropBallAnimationStyle.rawValue, forKey: Keys.dropBallAnimationStyle)
+        }
+    }
+    
+    // MARK: - DropBall Glass Style Template (Crystal Clear / Balanced / High Contrast)
+    @Published public var dropBallGlassStyle: DropBallGlassStyle {
+        didSet {
+            UserDefaults.standard.set(dropBallGlassStyle.rawValue, forKey: Keys.dropBallGlassStyle)
+            self.dropBallClarity = dropBallGlassStyle.clarity
+            self.dropBallFrost = dropBallGlassStyle.frost
+            self.dropBallDepth = dropBallGlassStyle.depth
+            self.dropBallSheen = dropBallGlassStyle.sheen
+            self.dropBallRim = dropBallGlassStyle.rim
+        }
+    }
+    
+    // MARK: - DropBall Liquid Glass Shaders Configuration
+    @Published public var dropBallClarity: Double {
+        didSet { UserDefaults.standard.set(dropBallClarity, forKey: Keys.dropBallClarity) }
+    }
+    @Published public var dropBallFrost: Double {
+        didSet { UserDefaults.standard.set(dropBallFrost, forKey: Keys.dropBallFrost) }
+    }
+    @Published public var dropBallDepth: Double {
+        didSet { UserDefaults.standard.set(dropBallDepth, forKey: Keys.dropBallDepth) }
+    }
+    @Published public var dropBallSheen: Double {
+        didSet { UserDefaults.standard.set(dropBallSheen, forKey: Keys.dropBallSheen) }
+    }
+    @Published public var dropBallRim: Double {
+        didSet { UserDefaults.standard.set(dropBallRim, forKey: Keys.dropBallRim) }
+    }
+    
+    public func resetDropBallShadersToDefault() {
+        dropBallGlassStyle = .superClear
     }
     
     // MARK: - UI Scaling / Display Density Option
@@ -648,6 +695,27 @@ public final class AppState: ObservableObject {
         } else {
             self.floatingBallEnabled = UserDefaults.standard.bool(forKey: Keys.floatingBallEnabled)
         }
+        
+        if let rawStyle = UserDefaults.standard.string(forKey: Keys.dropBallAnimationStyle),
+           let style = DropBallAnimationStyle(rawValue: rawStyle) {
+            self.dropBallAnimationStyle = style
+        } else {
+            self.dropBallAnimationStyle = .exaggerated
+        }
+        
+        let initialGlassStyle: DropBallGlassStyle
+        if let rawGlassStyle = UserDefaults.standard.string(forKey: Keys.dropBallGlassStyle),
+           let glassStyle = DropBallGlassStyle(rawValue: rawGlassStyle) {
+            initialGlassStyle = glassStyle
+        } else {
+            initialGlassStyle = .superClear
+        }
+        self.dropBallGlassStyle = initialGlassStyle
+        self.dropBallClarity = initialGlassStyle.clarity
+        self.dropBallFrost = initialGlassStyle.frost
+        self.dropBallDepth = initialGlassStyle.depth
+        self.dropBallSheen = initialGlassStyle.sheen
+        self.dropBallRim = initialGlassStyle.rim
         
         if let rawScale = UserDefaults.standard.string(forKey: Keys.uiScale),
            let scale = UIScaleOption(rawValue: rawScale) {

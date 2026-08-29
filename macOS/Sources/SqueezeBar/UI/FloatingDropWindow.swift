@@ -7,6 +7,7 @@ public final class FloatingDropWindowController: NSObject, NSWindowDelegate {
     public static let shared = FloatingDropWindowController()
     
     private var floatingPanel: NSPanel?
+    public var window: NSPanel? { return floatingPanel }
     
     public override init() {
         super.init()

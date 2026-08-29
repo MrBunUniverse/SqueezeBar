@@ -11,33 +11,77 @@ public struct FloatingBallView: View {
     
     public init() {}
     
+    private var isTuckedState: Bool {
+        liquidModel.isTucked && !isHovered && !isDropTargeted && !state.isProcessing && !liquidModel.isMoving
+    }
+    
+    private var isRightEdge: Bool {
+        liquidModel.dockEdge == .right
+    }
+    
+    private var currentRevealSpring: Animation {
+        switch state.dropBallAnimationStyle {
+        case .calm: return .spring(response: 0.38, dampingFraction: 0.82)
+        case .standard: return .spring(response: 0.35, dampingFraction: 0.58, blendDuration: 0.05)
+        case .exaggerated: return .spring(response: 0.40, dampingFraction: 0.44, blendDuration: 0.08)
+        }
+    }
+    
+    // Smooth X Offset: Tucked vs Popped/Revealed
+    private var targetXOffset: CGFloat {
+        if liquidModel.isMoving {
+            return 0
+        }
+        let popoutOffset: CGFloat
+        switch state.dropBallAnimationStyle {
+        case .calm: popoutOffset = 10
+        case .standard: popoutOffset = 16
+        case .exaggerated: popoutOffset = 22
+        }
+        
+        if isTuckedState {
+            // Tucked: sphere rests as a sleek crystal glass bead handle on the screen edge
+            return isRightEdge ? 20 : -20
+        } else {
+            // Popped out: sphere gracefully floats with space from the bezel
+            return isRightEdge ? -popoutOffset : popoutOffset
+        }
+    }
+    
+    // Fluid Dynamic Scale (Stretch & Squash Physics)
+    private var targetScaleX: CGFloat {
+        let hoverScale: CGFloat
+        switch state.dropBallAnimationStyle {
+        case .calm: hoverScale = 1.04
+        case .standard: hoverScale = 1.08
+        case .exaggerated: hoverScale = 1.15
+        }
+        let base: CGFloat = isTuckedState ? 0.94 : (isDropTargeted ? (hoverScale * 1.08) : (isHovered ? hoverScale : 1.0))
+        return base * liquidModel.scaleX
+    }
+    
+    private var targetScaleY: CGFloat {
+        let hoverScale: CGFloat
+        switch state.dropBallAnimationStyle {
+        case .calm: hoverScale = 1.04
+        case .standard: hoverScale = 1.08
+        case .exaggerated: hoverScale = 1.15
+        }
+        let base: CGFloat = isTuckedState ? 1.03 : (isDropTargeted ? (hoverScale * 1.08) : (isHovered ? hoverScale : 1.0))
+        return base * liquidModel.scaleY
+    }
+    
     public var body: some View {
         ZStack {
-            if liquidModel.isTucked && !isHovered && !isDropTargeted && !state.isProcessing && !liquidModel.isMoving {
-                // MARK: - Crisp, Luminous Bezel Edge Tab
-                bezelEdgeTab
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.90)),
-                        removal: .opacity.combined(with: .scale(scale: 1.10))
-                    ))
-            } else {
-                // MARK: - Full Liquid Glass Sphere
-                fullLiquidSphere
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.90)),
-                        removal: .opacity.combined(with: .scale(scale: 1.10))
-                    ))
-            }
+            liquidGlassOrb
         }
-        .frame(width: 100, height: 100, alignment: .center)
+        // 160x160 canvas provides ample headroom so exaggerated bounce/stretch never gets clipped
+        .frame(width: 160, height: 160, alignment: .center)
         .contentShape(Rectangle())
-        .animation(.spring(response: 0.30, dampingFraction: 0.74), value: liquidModel.isTucked)
-        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isHovered)
-        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isDropTargeted)
-        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: state.isProcessing)
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.18)) {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
                 isHovered = hovering
+                liquidModel.isHovered = hovering
             }
             if hovering {
                 liquidModel.revealFromTuck()
@@ -61,7 +105,7 @@ public struct FloatingBallView: View {
             
             Divider()
             
-            Button("Hide Floating Drop Ball") {
+            Button("Hide DropBall") {
                 withAnimation {
                     AppState.shared.floatingBallEnabled = false
                 }
@@ -69,117 +113,17 @@ public struct FloatingBallView: View {
         }
     }
     
-    // MARK: - Crisp Luminous Edge Tab (Tucked Idle Mode)
-    private var bezelEdgeTab: some View {
-        let isRight = (liquidModel.dockEdge == .right)
-        
-        return ZStack {
-            // High-Contrast Dark Glass Base
-            UnevenRoundedRectangle(
-                topLeadingRadius: isRight ? 15 : 0,
-                bottomLeadingRadius: isRight ? 15 : 0,
-                bottomTrailingRadius: isRight ? 0 : 15,
-                topTrailingRadius: isRight ? 0 : 15
-            )
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(white: 0.22).opacity(0.95),
-                        Color(white: 0.12).opacity(0.95)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: isRight ? 15 : 0,
-                    bottomLeadingRadius: isRight ? 15 : 0,
-                    bottomTrailingRadius: isRight ? 0 : 15,
-                    topTrailingRadius: isRight ? 0 : 15
-                )
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.50),
-                            state.accentColor.opacity(0.40)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.0
-                )
-            )
-            .shadow(color: Color.black.opacity(0.45), radius: 8, y: 3)
-            
-            // Luminous Theme Emblem / Grip Indicator
-            HStack(spacing: 0) {
-                if isRight {
-                    Image(systemName: "archivebox.circle.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(state.accentColor)
-                        .padding(.leading, 3)
-                } else {
-                    Image(systemName: "archivebox.circle.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(state.accentColor)
-                        .padding(.trailing, 3)
-                }
-            }
-        }
-        .frame(width: 28, height: 48)
-        .offset(x: isRight ? 24 : -24)
-        .opacity(0.85)
-    }
-    
-    // MARK: - Full Liquid Glass Sphere (Revealed Active Mode)
-    private var fullLiquidSphere: some View {
-        return ZStack {
-            // Base Circular Glass Card
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(white: 0.22).opacity(isDropTargeted ? 0.98 : 0.90),
-                            Color(white: 0.10).opacity(isDropTargeted ? 0.98 : 0.90)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: Color.black.opacity(isHovered || isDropTargeted || liquidModel.isMoving ? 0.50 : 0.30), radius: isDropTargeted ? 14 : 9, y: 4)
-            
-            // Theme Accent Ambient Underglow
-            if isDropTargeted || state.isProcessing || liquidModel.isMoving || isHovered {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                state.accentColor.opacity(isDropTargeted ? 0.45 : (liquidModel.isMoving ? 0.35 : 0.25)),
-                                state.accentColor.opacity(0.0)
-                            ],
-                            center: .center,
-                            startRadius: 10,
-                            endRadius: 34
-                        )
-                    )
+    // MARK: - Pure Apple Liquid Glass Orb (Lumen Architecture)
+    private var liquidGlassOrb: some View {
+        ZStack {
+            // Pure Apple Liquid Glass (Clean background so desktop optical refraction works directly)
+            if #available(macOS 26.0, *) {
+                glassPane
+            } else {
+                fallbackGlassPane
             }
             
-            // Specular Outer Rim Stroke
-            Circle()
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            isDropTargeted ? state.accentColor : (isHovered || liquidModel.isMoving ? Color.white.opacity(0.65) : Color.white.opacity(0.30)),
-                            isDropTargeted ? state.accentColor.opacity(0.50) : Color.white.opacity(0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: isDropTargeted ? 2.0 : 1.0
-                )
-            
-            // Circular Progress Arc while processing
+            // Processing Circular Progress Arc
             if state.isProcessing {
                 Circle()
                     .trim(from: 0.0, to: max(0.05, CGFloat(min(1.0, state.overallProgress))))
@@ -188,55 +132,135 @@ public struct FloatingBallView: View {
                         style: StrokeStyle(lineWidth: 3.0, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .padding(2)
+                    .frame(width: 52, height: 52)
                     .animation(.linear(duration: 0.2), value: state.overallProgress)
             }
             
-            // Center Dynamic Content / Icon
+            // Floating Jewel Emblem suspended inside the Glass Core
             centerContent
+                .offset(x: isTuckedState ? (isRightEdge ? -4 : 4) : 0)
         }
-        .frame(width: 56, height: 56)
-        // Liquid Glass Squash & Stretch Physics
-        .scaleEffect(
-            x: liquidModel.scaleX * (isDropTargeted ? 1.14 : (isHovered ? 1.05 : 1.0)),
-            y: liquidModel.scaleY * (isDropTargeted ? 1.14 : (isHovered ? 1.05 : 1.0))
-        )
+        .frame(width: 58, height: 58)
+        .offset(x: targetXOffset)
+        .scaleEffect(x: targetScaleX, y: targetScaleY)
         .rotationEffect(.degrees(liquidModel.rotationAngle))
-        .opacity(1.0)
+        .opacity(isTuckedState ? 0.90 : 1.0)
+        .animation(currentRevealSpring, value: liquidModel.isTucked)
+        .animation(currentRevealSpring, value: isHovered)
+        .animation(currentRevealSpring, value: isDropTargeted)
+        .animation(currentRevealSpring, value: state.isProcessing)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.dropBallGlassStyle)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.dropBallClarity)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.dropBallFrost)
+    }
+    
+    @available(macOS 26.0, *)
+    private var glassPane: some View {
+        let shape = Circle()
+        let opacityTint = (1.0 - state.dropBallClarity) * 0.85
+        return Rectangle()
+            .fill(.clear)
+            .glassEffect(Glass.clear, in: shape)
+            .overlay(shape.fill(Color.black.opacity(opacityTint)).allowsHitTesting(false))
+            .overlay(shape.fill(Color.white.opacity(state.dropBallFrost)).allowsHitTesting(false))
+            .overlay(depthShading.clipShape(shape).allowsHitTesting(false))
+            .overlay(sheenShading.clipShape(shape).allowsHitTesting(false))
+            .overlay(
+                Group {
+                    if isDropTargeted {
+                        shape.strokeBorder(state.accentColor, lineWidth: 1.5)
+                            .allowsHitTesting(false)
+                    } else if state.dropBallGlassStyle.rimWidth > 0 && state.dropBallRim > 0 {
+                        shape.strokeBorder(Color.primary.opacity(state.dropBallRim), lineWidth: state.dropBallGlassStyle.rimWidth)
+                            .allowsHitTesting(false)
+                    }
+                }
+            )
+    }
+    
+    private var fallbackGlassPane: some View {
+        let shape = Circle()
+        let opacityTint = (1.0 - state.dropBallClarity) * 0.85
+        return shape
+            .fill(.ultraThinMaterial)
+            .overlay(shape.fill(Color.black.opacity(opacityTint)).allowsHitTesting(false))
+            .overlay(shape.fill(Color.white.opacity(state.dropBallFrost)).allowsHitTesting(false))
+            .overlay(depthShading.clipShape(shape).allowsHitTesting(false))
+            .overlay(sheenShading.clipShape(shape).allowsHitTesting(false))
+            .overlay(
+                Group {
+                    if isDropTargeted {
+                        shape.strokeBorder(state.accentColor, lineWidth: 1.5)
+                            .allowsHitTesting(false)
+                    } else if state.dropBallGlassStyle.rimWidth > 0 && state.dropBallRim > 0 {
+                        shape.strokeBorder(Color.primary.opacity(state.dropBallRim), lineWidth: state.dropBallGlassStyle.rimWidth)
+                            .allowsHitTesting(false)
+                    }
+                }
+            )
+    }
+    
+    private var depthShading: some View {
+        LinearGradient(
+            colors: [
+                .black.opacity(0.85),
+                .black.opacity(0.05),
+                .black.opacity(0.55)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .opacity(state.dropBallDepth)
+    }
+
+    private var sheenShading: some View {
+        RadialGradient(
+            colors: [.white, .white.opacity(0)],
+            center: UnitPoint(x: 0.18, y: 0.04),
+            startRadius: 0,
+            endRadius: 70
+        )
+        .opacity(state.dropBallSheen * 3.0)
     }
     
     @ViewBuilder
     private var centerContent: some View {
         if state.showSuccessBadge {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: 26, weight: .bold))
                 .foregroundColor(.green)
+                .shadow(color: Color.green.opacity(0.60), radius: 6)
+                .shadow(color: .black.opacity(0.30), radius: 2)
                 .transition(.scale.combined(with: .opacity))
         } else if state.isProcessing {
             VStack(spacing: 1) {
                 Text("\(Int(state.overallProgress * 100))%")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .black, design: .rounded))
                     .foregroundColor(state.accentColor)
+                    .shadow(color: state.accentColor.opacity(0.60), radius: 4)
                 
                 Image(systemName: "bolt.horizontal.fill")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(state.accentColor.opacity(0.85))
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundColor(state.accentColor)
             }
         } else if isDropTargeted {
             VStack(spacing: 2) {
                 Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundColor(state.accentColor)
-                Text("Drop")
-                    .font(.system(size: 8, weight: .bold, design: .serif))
+                    .shadow(color: state.accentColor.opacity(0.70), radius: 6)
+                Text("DROP")
+                    .font(.system(size: 8, weight: .black, design: .rounded))
                     .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 2)
             }
         } else {
-            // High-Visibility SqueezeBar Emblem
-            Image(systemName: "archivebox.circle.fill")
-                .font(.system(size: 26, weight: .semibold))
+            // Bold vibrant emblem with luminous ambient glow
+            Image(systemName: "archivebox.fill")
+                .font(.system(size: 23, weight: .bold, design: .rounded))
                 .foregroundColor(state.accentColor)
-                .shadow(color: state.accentColor.opacity(0.40), radius: 4)
+                .shadow(color: state.accentColor.opacity(0.65), radius: 6, x: 0, y: 1)
+                .shadow(color: .black.opacity(0.40), radius: 3, x: 0, y: 1.5)
         }
     }
     

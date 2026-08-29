@@ -43,6 +43,8 @@ public struct QuickPopoverView: View {
     @Namespace private var pdfDpiGliderNamespace
     @Namespace private var pdfQualityGliderNamespace
     @Namespace private var uiScaleGliderNamespace
+    @Namespace private var dropBallGliderNamespace
+    @Namespace private var dropBallGlassGliderNamespace
     
     // Liquid Glass Collective Hover States (Apple-like Focus Bounce)
     @State private var hoveredTab: PopoverTab? = nil
@@ -50,6 +52,8 @@ public struct QuickPopoverView: View {
     @State private var hoveredQuickPresetMode: TargetSizeMode? = nil
     @State private var hoveredTargetLimitMode: TargetSizeMode? = nil
     @State private var hoveredUIScaleOption: UIScaleOption? = nil
+    @State private var hoveredDropBallAnimStyle: DropBallAnimationStyle? = nil
+    @State private var hoveredDropBallGlassStyle: DropBallGlassStyle? = nil
     
     enum PopoverTab: String, CaseIterable {
         case activity = "Activity"
@@ -166,7 +170,8 @@ public struct QuickPopoverView: View {
     
     // MARK: - Header
     private var headerView: some View {
-        HStack(spacing: 8) {
+        let isDetached = isDetachedWindow || state.isDetached
+        return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text("SqueezeBar")
                     .font(.system(size: 13.5, weight: .bold, design: .serif))
@@ -178,7 +183,7 @@ public struct QuickPopoverView: View {
             
             Spacer()
             
-            if isDetachedWindow {
+            if isDetached {
                 // Circular Dock button (Only shown in detached floating window)
                 Button {
                     FloatingDropWindowController.shared.dockToMenuBar()
@@ -253,9 +258,9 @@ public struct QuickPopoverView: View {
                 .background(Capsule().fill(Color.green.opacity(0.12)))
             }
         }
-        .padding(.leading, isDetachedWindow ? 82 : 20)
+        .padding(.leading, isDetached ? 96 : 20)
         .padding(.trailing, 18)
-        .padding(.top, isDetachedWindow ? 16 : 14)
+        .padding(.top, isDetached ? 16 : 14)
         .padding(.bottom, 12)
     }
     
@@ -880,9 +885,9 @@ public struct QuickPopoverView: View {
                         Button("Clear") {
                             showClearConfirmation = true
                         }
-                        .font(.system(size: 9.5, weight: .medium))
+                        .font(.system(size: 9.5, weight: .semibold))
                         .buttonStyle(.plain)
-                        .foregroundColor(.secondary.opacity(0.7))
+                        .foregroundColor(Color.red.opacity(0.88))
                         .confirmationDialog("Clear Recent Compressions?", isPresented: $showClearConfirmation, titleVisibility: .visible) {
                             Button("Clear All History", role: .destructive) {
                                 state.clearHistory()
@@ -1444,8 +1449,8 @@ public struct QuickPopoverView: View {
                         state.clearQueue()
                     }
                 }
-                .font(.system(size: 9.5, weight: .medium))
-                .foregroundColor(.secondary)
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundColor(Color.red.opacity(0.88))
                 .buttonStyle(.plain)
                 
                 Button {
@@ -2374,6 +2379,9 @@ public struct QuickPopoverView: View {
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                                 state.accentTheme = theme
                             }
+                            if theme != .custom {
+                                CustomColorPanelManager.shared.close()
+                            }
                         } label: {
                             ZStack {
                                 if theme == .custom {
@@ -2409,6 +2417,7 @@ public struct QuickPopoverView: View {
                             .frame(width: 30, height: 30)
                         }
                         .buttonStyle(.plain)
+                        .help(theme == .custom ? "Custom Color Wheel & Spectrum" : "\(theme.rawValue) Accent")
                     }
                 }
                 .padding(.vertical, 2)
@@ -2450,17 +2459,69 @@ public struct QuickPopoverView: View {
                                     )
                             )
                             
-                            // Native macOS Color Wheel / Spectrum Pop-out Picker
-                            ColorPicker("", selection: Binding(
-                                get: { state.accentColor },
-                                set: { newColor in
-                                    state.customAccentHex = AppState.hexFromColor(newColor)
+                            // Anchored Color Wheel Button (Opens Color Wheel right under button)
+                            Button {
+                                CustomColorPanelManager.shared.toggle(initialColor: state.accentColor)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(state.accentColor)
+                                        .frame(width: 22, height: 16)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .strokeBorder(Color.white.opacity(0.40), lineWidth: 0.75)
+                                        )
+                                        .shadow(color: Color.black.opacity(0.2), radius: 2)
+                                    
+                                    Image(systemName: "paintpalette")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.secondary)
                                 }
-                            ), supportsOpacity: false)
-                            .labelsHidden()
-                            .scaleEffect(0.9)
-                            .frame(width: 28, height: 20)
-                            .help("Open System Color Wheel")
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 3)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.white.opacity(0.06))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .help("Open Anchored Color Wheel")
+                            
+                            // Screen Eyedropper Loupe Button
+                            if #available(macOS 10.15, *) {
+                                Button {
+                                    NSColorSampler().show { selectedColor in
+                                        guard let selectedColor = selectedColor,
+                                              let srgb = selectedColor.usingColorSpace(.sRGB) else { return }
+                                        Task { @MainActor in
+                                            let r = Int(round(srgb.redComponent * 255))
+                                            let g = Int(round(srgb.greenComponent * 255))
+                                            let b = Int(round(srgb.blueComponent * 255))
+                                            let hex = String(format: "%02X%02X%02X", r, g, b)
+                                            withAnimation(.spring(response: 0.2)) {
+                                                state.customAccentHex = hex
+                                                state.accentTheme = .custom
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "eyedropper.halffull")
+                                        .font(.system(size: 10.5, weight: .semibold))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 22, height: 22)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.white.opacity(0.06))
+                                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .help("Pick color from screen")
+                            }
                             
                             Spacer()
                             
@@ -2759,8 +2820,8 @@ public struct QuickPopoverView: View {
                                 state.customOutputFolder = nil
                             } label: {
                                 Text("Clear")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundColor(Color.red.opacity(0.88))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 4)
                             }
@@ -2782,38 +2843,187 @@ public struct QuickPopoverView: View {
                 
                 Divider().opacity(0.2)
                 
-                // Desktop Floating Drop Ball Widget
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                        state.floatingBallEnabled.toggle()
-                    }
-                } label: {
-                    HStack(alignment: .center, spacing: 6) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 5) {
-                                Text("Desktop Floating Drop Ball")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.primary)
+                // MARK: - DropBall Desktop Widget Section
+                VStack(alignment: .leading, spacing: 10) {
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                            state.floatingBallEnabled.toggle()
+                        }
+                    } label: {
+                        HStack(alignment: .center, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 5) {
+                                    Text("DropBall")
+                                        .font(.system(size: 10.5, weight: .bold, design: .serif))
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("EDGE-DOCK")
+                                        .font(.system(size: 7.5, weight: .bold, design: .rounded))
+                                        .foregroundColor(state.accentColor)
+                                        .padding(.horizontal, 3.5)
+                                        .padding(.vertical, 0.5)
+                                        .background(Capsule().fill(state.accentColor.opacity(0.15)))
+                                }
                                 
-                                Text("BASKET")
-                                    .font(.system(size: 7.5, weight: .bold, design: .rounded))
-                                    .foregroundColor(state.accentColor)
-                                    .padding(.horizontal, 3.5)
-                                    .padding(.vertical, 0.5)
-                                    .background(Capsule().fill(state.accentColor.opacity(0.15)))
+                                Text("Edge-docked liquid glass drop zone for instant 1-drop compression.")
+                                    .font(.system(size: 8.5))
+                                    .foregroundColor(.secondary)
                             }
                             
-                            Text("Adaptive 50%/80% opacity floating widget on desktop for instant drag & drop")
-                                .font(.system(size: 8.5))
-                                .foregroundColor(.secondary)
+                            Spacer()
+                            LiquidGlassSwitch(isOn: $state.floatingBallEnabled)
                         }
-                        
-                        Spacer()
-                        LiquidGlassSwitch(isOn: $state.floatingBallEnabled)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    
+                    // Optimization & Animation Dynamics Glider (Calm / Standard / Exaggerated)
+                    if state.floatingBallEnabled {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("BOUNCE DYNAMICS")
+                                    .font(.system(size: 8, weight: .bold, design: .serif))
+                                    .foregroundColor(.secondary.opacity(0.8))
+                                
+                                Spacer()
+                                
+                                Text(state.dropBallAnimationStyle.description)
+                                    .font(.system(size: 7.5))
+                                    .foregroundColor(.secondary.opacity(0.7))
+                                    .lineLimit(1)
+                            }
+                            
+                            HStack(spacing: 4) {
+                                ForEach(DropBallAnimationStyle.allCases) { style in
+                                    let isSelected = state.dropBallAnimationStyle == style
+                                    let isHovered = hoveredDropBallAnimStyle == style
+                                    
+                                    Button {
+                                        withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                            state.dropBallAnimationStyle = style
+                                        }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: style.icon)
+                                                .font(.system(size: 8.5, weight: isSelected ? .bold : .medium))
+                                            Text(style.rawValue)
+                                                .font(.system(size: 9.5, weight: isSelected ? .bold : .medium))
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 5)
+                                        .foregroundColor(isSelected ? state.contrastTextColor : .secondary)
+                                        .background(
+                                            ZStack {
+                                                if isSelected {
+                                                    Capsule()
+                                                        .fill(state.accentColor)
+                                                        .matchedGeometryEffect(id: "dropBallAnimGlider", in: dropBallGliderNamespace)
+                                                        .shadow(color: state.accentColor.opacity(0.35), radius: 3)
+                                                } else {
+                                                    Capsule()
+                                                        .fill(Color.white.opacity(0.04))
+                                                }
+                                            }
+                                        )
+                                        .contentShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .scaleEffect(isHovered ? 1.02 : 1.0)
+                                    .onHover { hovering in
+                                        withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.85)) {
+                                            if hovering {
+                                                hoveredDropBallAnimStyle = style
+                                            } else if hoveredDropBallAnimStyle == style {
+                                                hoveredDropBallAnimStyle = nil
+                                            }
+                                        }
+                                    }
+                                    .help(style.description)
+                                }
+                            }
+                            .padding(2.5)
+                            .background(
+                                Capsule()
+                                    .fill(Color.black.opacity(0.22))
+                                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
+                            )
+                            
+                            // Glass Optics Template Glider (Crystal Clear / Balanced / High Contrast)
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Text("GLASS OPTICS")
+                                        .font(.system(size: 8, weight: .bold, design: .serif))
+                                        .foregroundColor(.secondary.opacity(0.8))
+                                    
+                                    Spacer()
+                                    
+                                    Text(state.dropBallGlassStyle.description)
+                                        .font(.system(size: 7.5))
+                                        .foregroundColor(.secondary.opacity(0.7))
+                                        .lineLimit(1)
+                                }
+                                
+                                HStack(spacing: 4) {
+                                    ForEach(DropBallGlassStyle.allCases) { style in
+                                        let isSelected = state.dropBallGlassStyle == style
+                                        let isHovered = hoveredDropBallGlassStyle == style
+                                        
+                                        Button {
+                                            withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                                state.dropBallGlassStyle = style
+                                            }
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: style.icon)
+                                                    .font(.system(size: 8.5, weight: isSelected ? .bold : .medium))
+                                                Text(style.rawValue)
+                                                    .font(.system(size: 9.5, weight: isSelected ? .bold : .medium))
+                                            }
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 5)
+                                            .foregroundColor(isSelected ? state.contrastTextColor : .secondary)
+                                            .background(
+                                                ZStack {
+                                                    if isSelected {
+                                                        Capsule()
+                                                            .fill(state.accentColor)
+                                                            .matchedGeometryEffect(id: "dropBallGlassGlider", in: dropBallGlassGliderNamespace)
+                                                            .shadow(color: state.accentColor.opacity(0.35), radius: 3)
+                                                    } else {
+                                                        Capsule()
+                                                            .fill(Color.white.opacity(0.04))
+                                                    }
+                                                }
+                                            )
+                                            .contentShape(Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .scaleEffect(isHovered ? 1.02 : 1.0)
+                                        .onHover { hovering in
+                                            withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.85)) {
+                                                if hovering {
+                                                    hoveredDropBallGlassStyle = style
+                                                } else if hoveredDropBallGlassStyle == style {
+                                                    hoveredDropBallGlassStyle = nil
+                                                }
+                                            }
+                                        }
+                                        .help(style.description)
+                                    }
+                                }
+                                .padding(2.5)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.black.opacity(0.22))
+                                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
+                                )
+                            }
+                            .padding(.top, 2)
+                        }
+                        .padding(.top, 2)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
-                .buttonStyle(.plain)
                 
                 Divider().opacity(0.2)
                 
@@ -2973,7 +3183,7 @@ public struct QuickPopoverView: View {
     // MARK: - Footer
     private var footerView: some View {
         HStack {
-            Text("SqueezeBar v0.98 • SirJameTV")
+            Text("SqueezeBar v1.0.0 • SirJameTV")
                 .font(.system(size: 9))
                 .foregroundColor(.secondary)
             
@@ -4304,38 +4514,42 @@ private struct QuickPopoverHistoryRowItem: View {
         }
         .padding(9)
         .background(
-            GeometryReader { cardGeo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(isHovered ? 0.065 : 0.045),
-                                    Color.white.opacity(isHovered ? 0.025 : 0.015)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    
-                    // Specular Completion Shimmer Flare
-                    if shimmerOffset < 1.2 {
-                        Rectangle()
+            ZStack {
+                NonDraggableArea()
+                
+                GeometryReader { cardGeo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 10)
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        Color.clear,
-                                        state.accentColor.opacity(0.15),
-                                        Color.white.opacity(0.20),
-                                        state.accentColor.opacity(0.15),
-                                        Color.clear
+                                        Color.white.opacity(isHovered ? 0.065 : 0.045),
+                                        Color.white.opacity(isHovered ? 0.025 : 0.015)
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
-                            .rotationEffect(.degrees(25))
-                            .offset(x: cardGeo.size.width * shimmerOffset)
+                        
+                        // Specular Completion Shimmer Flare
+                        if shimmerOffset < 1.2 {
+                            Rectangle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.clear,
+                                            state.accentColor.opacity(0.15),
+                                            Color.white.opacity(0.20),
+                                            state.accentColor.opacity(0.15),
+                                            Color.clear
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .rotationEffect(.degrees(25))
+                                .offset(x: cardGeo.size.width * shimmerOffset)
+                        }
                     }
                 }
             }
@@ -4496,9 +4710,12 @@ private struct StagedQueueRowItem: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(isHovered ? 0.05 : 0.03))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
+            ZStack {
+                NonDraggableArea()
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(isHovered ? 0.05 : 0.03))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
+            }
         )
         .onHover { h in
             isHovered = h
