@@ -78,7 +78,7 @@
     "007AFF" : {
       "shouldTranslate" : false
     },
-    "Accent Color" : {
+    "Accent color" : {
 
     },
     "Activity" : {
@@ -105,10 +105,7 @@
     "Audio Bitrate" : {
 
     },
-    "Auto-Squeeze Watch Folder" : {
-
-    },
-    "Automatic Subfolder" : {
+    "Auto-squeeze watch folder" : {
 
     },
     "Automatic at %@. Choose Manual to adjust %@." : {
@@ -120,6 +117,9 @@
           }
         }
       }
+    },
+    "Automatic subfolder" : {
+
     },
     "BETA" : {
 
@@ -166,9 +166,6 @@
     "Clear All History" : {
 
     },
-    "Clear Compression History" : {
-
-    },
     "Clear History…" : {
 
     },
@@ -187,7 +184,7 @@
     "Complete" : {
 
     },
-    "Completion Feedback" : {
+    "Completion feedback" : {
 
     },
     "Compresses immediately with your current presets" : {
@@ -211,7 +208,7 @@
     "Create Project Folder" : {
 
     },
-    "Create Subfolder for Compressed Files" : {
+    "Create subfolder for compressed files" : {
 
     },
     "Current queue" : {
@@ -223,10 +220,10 @@
     "Custom Color Wheel & Spectrum" : {
 
     },
-    "Custom Directory" : {
+    "Custom Max Size" : {
 
     },
-    "Custom Max Size" : {
+    "Custom directory" : {
 
     },
     "Default App Theme Color" : {
@@ -242,9 +239,6 @@
 
     },
     "Deselect item" : {
-
-    },
-    "Detach Floating Window" : {
 
     },
     "Dismiss" : {
@@ -310,10 +304,10 @@
     "Enter a format pattern. Use '#' or '{index}' for auto-incrementing numbers." : {
 
     },
-    "Finder Right-Click Quick Action" : {
+    "Finder right-click quick action" : {
 
     },
-    "Fixed Folder" : {
+    "Fixed folder" : {
 
     },
     "Floating drop target that snaps to a screen edge" : {
@@ -340,13 +334,10 @@
     "General" : {
 
     },
-    "HEX Code" : {
+    "HEX code" : {
 
     },
-    "Haptic Feedback on Completion" : {
-
-    },
-    "Hide Desktop Drop Ball" : {
+    "Haptic feedback on completion" : {
 
     },
     "Homerenovation_#" : {
@@ -364,10 +355,10 @@
     "Images · Video · Audio · PDF, or click to choose" : {
 
     },
-    "Input Methods" : {
+    "Input methods" : {
 
     },
-    "Interface Scaling" : {
+    "Interface scaling" : {
 
     },
     "Keeps 100% dimensions and compresses quality/bitrate" : {
@@ -379,7 +370,7 @@
     "LIVE PREVIEW:" : {
 
     },
-    "Launch at System Startup" : {
+    "Launch at system startup" : {
 
     },
     "Lock Original Audio Quality" : {
@@ -412,7 +403,7 @@
     "New Folder" : {
 
     },
-    "Next to Original" : {
+    "Next to original" : {
 
     },
     "No folder selected" : {
@@ -430,9 +421,6 @@
     "Open Before/After Comparison Inspector" : {
 
     },
-    "Open SqueezeBar Hub" : {
-
-    },
     "Optimized_{index}" : {
       "shouldTranslate" : false
     },
@@ -445,7 +433,7 @@
     "Output" : {
 
     },
-    "Output File Suffix" : {
+    "Output file suffix" : {
 
     },
     "Pause %@" : {
@@ -467,9 +455,6 @@
 
     },
     "Quit" : {
-
-    },
-    "Quit SqueezeBar" : {
 
     },
     "Recent" : {
@@ -502,13 +487,13 @@
     "Reset" : {
 
     },
-    "Reset All Compression Stats" : {
-
-    },
-    "Reset Stats" : {
+    "Reset all compression stats" : {
 
     },
     "Reset all compression stats?" : {
+
+    },
+    "Reset stats" : {
 
     },
     "Resolution Scale" : {
@@ -556,10 +541,7 @@
     "Shading" : {
 
     },
-    "Show Desktop Drop Ball" : {
-
-    },
-    "Sound Chime on Completion" : {
+    "Sound chime on completion" : {
 
     },
     "Squeeze All (%lld)" : {
@@ -583,10 +565,10 @@
     "Strip Document Metadata" : {
 
     },
-    "Strip EXIF / Metadata" : {
+    "Strip EXIF / metadata" : {
 
     },
-    "Subfolder Name" : {
+    "Subfolder name" : {
 
     },
     "Target Size Limit" : {
@@ -613,13 +595,13 @@
     "Video Bitrate" : {
 
     },
-    "Welcome & File Access" : {
-
-    },
-    "Window Glass" : {
+    "Welcome & file access" : {
 
     },
     "Window blur" : {
+
+    },
+    "Window glass" : {
 
     },
     "Window shading" : {

@@ -2190,8 +2190,8 @@ public struct QuickPopoverView: View {
 
     private var saveDestinationSummary: String {
         state.customOutputFolder != nil
-            ? String(localized: "Custom Directory")
-            : (state.exportToSubfolder ? String(localized: "Automatic Subfolder") : String(localized: "Next to Original"))
+            ? String(localized: "Custom directory")
+            : (state.exportToSubfolder ? String(localized: "Automatic subfolder") : String(localized: "Next to original"))
     }
 
     private func chooseOutputFolder() {
@@ -2210,11 +2210,11 @@ public struct QuickPopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             // Output: where files go and what they are called
             settingsGroupCard("Output", icon: "folder", summary: saveDestinationSummary) {
-                settingsToggleRow("Create Subfolder for Compressed Files", isOn: $state.exportToSubfolder)
+                settingsToggleRow("Create subfolder for compressed files", isOn: $state.exportToSubfolder)
 
                 if state.exportToSubfolder {
                     HStack(spacing: 6) {
-                        Text("Subfolder Name")
+                        Text("Subfolder name")
                             .font(.system(size: 10.5, design: .rounded))
                             .foregroundColor(.secondary)
                         Spacer()
@@ -2229,7 +2229,7 @@ public struct QuickPopoverView: View {
                 settingsDivider()
 
                 HStack(spacing: 8) {
-                    Text("Fixed Folder")
+                    Text("Fixed folder")
                         .font(.system(size: 12, design: .rounded))
                     Spacer(minLength: 8)
                     if let customFolder = state.customOutputFolder {
@@ -2252,7 +2252,7 @@ public struct QuickPopoverView: View {
                 settingsDivider()
 
                 HStack {
-                    Text("Output File Suffix")
+                    Text("Output file suffix")
                         .font(.system(size: 12, design: .rounded))
                     Spacer()
                     TextField("_min", text: $state.outputSuffix)
@@ -2262,17 +2262,17 @@ public struct QuickPopoverView: View {
 
                 settingsDivider()
 
-                settingsToggleRow("Strip EXIF / Metadata", isOn: $state.stripMetadata, detail: "Removes location and camera info")
+                settingsToggleRow("Strip EXIF / metadata", isOn: $state.stripMetadata, detail: "Removes location and camera info")
             }
 
             // Input methods other than the menu bar itself
-            settingsGroupCard("Input Methods", icon: "square.and.arrow.down") {
+            settingsGroupCard("Input methods", icon: "square.and.arrow.down") {
                 settingsToggleRow("DropBall", isOn: $state.floatingBallEnabled, detail: "Floating drop target that snaps to a screen edge")
                 settingsDivider()
-                settingsToggleRow("Finder Right-Click Quick Action", isOn: $state.finderServiceEnabled, badge: "BETA")
+                settingsToggleRow("Finder right-click quick action", isOn: $state.finderServiceEnabled, badge: "BETA")
                 settingsDivider()
                 VStack(alignment: .leading, spacing: 8) {
-                    settingsToggleRow("Auto-Squeeze Watch Folder", isOn: $state.isWatchFolderEnabled, detail: "Compresses new files added to this folder")
+                    settingsToggleRow("Auto-squeeze watch folder", isOn: $state.isWatchFolderEnabled, detail: "Compresses new files added to this folder")
 
                     if state.isWatchFolderEnabled {
                         HStack(spacing: 8) {
@@ -2300,9 +2300,9 @@ public struct QuickPopoverView: View {
             }
 
             // Feedback: completion chime, haptics and soundpack
-            settingsGroupCard("Completion Feedback", icon: "speaker.wave.3.fill", summary: state.soundEnabled ? state.soundTheme.displayName : String(localized: "Off")) {
-                settingsToggleRow("Sound Chime on Completion", isOn: $state.soundEnabled)
-                settingsToggleRow("Haptic Feedback on Completion", isOn: $state.hapticEnabled)
+            settingsGroupCard("Completion feedback", icon: "speaker.wave.3.fill", summary: state.soundEnabled ? state.soundTheme.displayName : String(localized: "Off")) {
+                settingsToggleRow("Sound chime on completion", isOn: $state.soundEnabled)
+                settingsToggleRow("Haptic feedback on completion", isOn: $state.hapticEnabled)
 
                 VStack(alignment: .leading, spacing: 10) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
@@ -2367,7 +2367,7 @@ public struct QuickPopoverView: View {
 
             // General: app-level behaviour
             settingsGroupCard("General", icon: "gearshape") {
-                settingsToggleRow("Launch at System Startup", isOn: $state.launchAtLogin, action: {
+                settingsToggleRow("Launch at system startup", isOn: $state.launchAtLogin, action: {
                     state.setLaunchAtLogin(enabled: !state.launchAtLogin)
                 })
                 settingsDivider()
@@ -2375,7 +2375,7 @@ public struct QuickPopoverView: View {
                     WelcomeWindowController.shared.show()
                 } label: {
                     HStack(alignment: .center) {
-                        Text("Welcome & File Access")
+                        Text("Welcome & file access")
                             .font(.system(size: 12, design: .rounded))
                             .foregroundColor(.primary)
                         Spacer()
@@ -2387,7 +2387,7 @@ public struct QuickPopoverView: View {
                 }
                 .buttonStyle(.plain)
                 settingsDivider()
-                Button("Reset All Compression Stats", role: .destructive) {
+                Button("Reset all compression stats", role: .destructive) {
                     showResetStatsConfirmation = true
                 }
                 .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -2395,7 +2395,7 @@ public struct QuickPopoverView: View {
                 .buttonStyle(.plain)
             }
             .confirmationDialog("Reset all compression stats?", isPresented: $showResetStatsConfirmation, titleVisibility: .visible) {
-                Button("Reset Stats", role: .destructive) { state.resetAllStats() }
+                Button("Reset stats", role: .destructive) { state.resetAllStats() }
                 Button("Cancel", role: .cancel) {}
             }
             
@@ -2427,7 +2427,7 @@ public struct QuickPopoverView: View {
                 // UI Scaling / Display Density Card
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Label("Interface Scaling", systemImage: "arrow.up.left.and.arrow.down.right")
+                        Label("Interface scaling", systemImage: "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
                         Spacer()
                         Text("\(state.uiScale.displayName) (\(state.uiScale.percentageLabel))")
@@ -2481,7 +2481,7 @@ public struct QuickPopoverView: View {
                 // App transparency and Liquid Glass controls
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
-                        Label("Window Glass", systemImage: "sparkles")
+                        Label("Window glass", systemImage: "sparkles")
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
                         Spacer(minLength: 4)
                         Button("Reset") {
@@ -2559,7 +2559,7 @@ public struct QuickPopoverView: View {
 
                 // Apple Minimalist Theme Accent Color Card
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Accent Color")
+                    Text("Accent color")
                         .font(.system(size: 12, design: .rounded))
                     // Native macOS Style Swatch Circles
                     HStack(spacing: 8) {
@@ -2617,7 +2617,7 @@ public struct QuickPopoverView: View {
                             Divider().opacity(0.15)
                         
                             HStack(spacing: 8) {
-                                Text("HEX Code")
+                                Text("HEX code")
                                     .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                                     .foregroundColor(.secondary)
                             
