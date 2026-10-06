@@ -1,0 +1,14 @@
+{
+  "fill" : { "solid" : "srgb:0.23922,0.30196,1.00000,1.00000" },
+  "groups" : [
+    {
+      "layers" : [
+        { "image-name" : "bar-orange.png", "name" : "bar-orange" },
+        { "image-name" : "bars-white.png", "name" : "bars-white" }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
+      "translucency" : { "enabled" : false, "value" : 0 }
+    }
+  ],
+  "supported-platforms" : { "squares" : "shared" }
+}

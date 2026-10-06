@@ -46,6 +46,26 @@ func createIconImage(size: CGFloat) -> NSImage {
     return img
 }
 
+// Transparent 1024 layer holding a subset of the bars, for the Icon Composer (.icon) package.
+func createLayerImage(orange: Bool) -> NSImage {
+    let size: CGFloat = 1024
+    let img = NSImage(size: NSSize(width: size, height: size))
+    img.lockFocus()
+    if let ctx = NSGraphicsContext.current?.cgContext {
+        let k = 1.12 as CGFloat
+        for (i, bar) in bars.enumerated() where (i == 2) == orange {
+            let (x0, x1, y) = bar
+            let rect = CGRect(x: size / 2 + (x0 - 512) * k, y: size / 2 - (y + barHeight - 512) * k, width: (x1 - x0) * k, height: barHeight * k)
+            let r = rect.height / 2
+            ctx.setFillColor(orange ? NSColor(red: 1, green: 0x8A / 255, blue: 0x3D / 255, alpha: 1).cgColor : NSColor.white.cgColor)
+            ctx.addPath(CGPath(roundedRect: rect, cornerWidth: r, cornerHeight: r, transform: nil))
+            ctx.fillPath()
+        }
+    }
+    img.unlockFocus()
+    return img
+}
+
 func savePNG(image: NSImage, to url: URL) {
     guard let tiffData = image.tiffRepresentation,
           let bitmap = NSBitmapImageRep(data: tiffData),
@@ -93,3 +113,28 @@ try? task.run()
 task.waitUntilExit()
 
 print("AppIcon.icns created successfully!")
+
+// Layered icon for macOS 26 (compiled to Assets.car by bundle_app.sh via actool).
+let iconPkg = resourcesDir.appendingPathComponent("SqueezeBar.icon")
+let iconAssets = iconPkg.appendingPathComponent("Assets")
+try? fm.createDirectory(at: iconAssets, withIntermediateDirectories: true)
+savePNG(image: createLayerImage(orange: false), to: iconAssets.appendingPathComponent("bars-white.png"))
+savePNG(image: createLayerImage(orange: true), to: iconAssets.appendingPathComponent("bar-orange.png"))
+let iconJSON = """
+{
+  "fill" : { "solid" : "srgb:0.23922,0.30196,1.00000,1.00000" },
+  "groups" : [
+    {
+      "layers" : [
+        { "image-name" : "bar-orange.png", "name" : "bar-orange" },
+        { "image-name" : "bars-white.png", "name" : "bars-white" }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
+      "translucency" : { "enabled" : false, "value" : 0 }
+    }
+  ],
+  "supported-platforms" : { "squares" : "shared" }
+}
+"""
+try? iconJSON.write(to: iconPkg.appendingPathComponent("icon.json"), atomically: true, encoding: .utf8)
+print("SqueezeBar.icon written")

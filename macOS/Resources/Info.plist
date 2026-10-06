@@ -25,7 +25,9 @@
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
     <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
+    <string>SqueezeBar</string>
+    <key>CFBundleIconName</key>
+    <string>SqueezeBar</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 SqueezeBar. All rights reserved.</string>
     <key>NSServices</key>
