@@ -1,6 +1,6 @@
 # SqueezeBar
 
-macOS 26+ menu-bar media compressor (images, video, audio, PDF). SwiftPM, no third-party deps, 100% on-device, zero telemetry. All source is under `macOS/`. The Windows port was dropped; ignore any `windows/` history.
+macOS 26+ menu-bar media compressor (images, video, audio, PDF). SwiftPM, no third-party deps, 100% on-device, zero telemetry. Mac source is under `macOS/`. A Windows 11 port (WinUI 3, C#) is being rebuilt in `windows/`; so far only `SqueezeBar.Core` (engine logic, no UI) exists, tested with `dotnet test windows/SqueezeBar.Core.Tests`. Ignore the old Avalonia `windows/` in git history.
 
 ## Commands (run from `macOS/`)
 
