@@ -9,3 +9,6 @@ SqueezeBar.app/
 dist/
 **/dist/
 *.dmg
+
+# Local assistant instructions
+CLAUDE.md
