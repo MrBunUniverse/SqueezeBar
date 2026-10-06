@@ -3,6 +3,13 @@ import Foundation
 import AppKit
 import CoreGraphics
 
+// Flat "striped S" icon: full-bleed royal-blue square, five rounded bars (middle one orange).
+// Bars are (x0, x1, y) on a 1024 design grid.
+let bars: [(CGFloat, CGFloat, CGFloat)] = [
+    (290, 800, 170), (224, 484, 312), (224, 800, 454), (540, 800, 596), (224, 734, 738)
+]
+let barHeight: CGFloat = 116
+
 func createIconImage(size: CGFloat) -> NSImage {
     let img = NSImage(size: NSSize(width: size, height: size))
     img.lockFocus()
@@ -10,129 +17,31 @@ func createIconImage(size: CGFloat) -> NSImage {
         img.unlockFocus()
         return img
     }
-    
-    let rect = CGRect(x: 0, y: 0, width: size, height: size)
-    
-    // 1. macOS Squircle Background Container (App Icon Squircle)
-    let margin = size * 0.08
-    let squircleRect = rect.insetBy(dx: margin, dy: margin)
-    let cornerRadius = squircleRect.width * 0.224
-    let squirclePath = CGPath(
-        roundedRect: squircleRect,
-        cornerWidth: cornerRadius,
-        cornerHeight: cornerRadius,
-        transform: nil
-    )
-    
-    // Drop shadow
-    ctx.saveGState()
-    ctx.setShadow(
-        offset: CGSize(width: 0, height: -size * 0.035),
-        blur: size * 0.07,
-        color: NSColor.black.withAlphaComponent(0.45).cgColor
-    )
-    ctx.setFillColor(NSColor(red: 0.11, green: 0.12, blue: 0.14, alpha: 1.0).cgColor)
-    ctx.addPath(squirclePath)
-    ctx.fillPath()
-    ctx.restoreGState()
-    
-    // Gradient fill for background tile
-    ctx.saveGState()
-    ctx.addPath(squirclePath)
-    ctx.clip()
-    
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
-    let bgColors = [
-        NSColor(red: 0.18, green: 0.19, blue: 0.22, alpha: 1.0).cgColor,
-        NSColor(red: 0.11, green: 0.12, blue: 0.14, alpha: 1.0).cgColor
-    ] as CFArray
-    let bgLocations: [CGFloat] = [0.0, 1.0]
-    if let gradient = CGGradient(colorsSpace: colorSpace, colors: bgColors, locations: bgLocations) {
-        ctx.drawLinearGradient(
-            gradient,
-            start: CGPoint(x: squircleRect.midX, y: squircleRect.maxY),
-            end: CGPoint(x: squircleRect.midX, y: squircleRect.minY),
-            options: []
+
+    // Full-bleed square: macOS 26 applies its own icon mask. Drawing our own rounded tile with
+    // transparent margin makes the system wrap the icon in a dark plate.
+    let full = CGRect(x: 0, y: 0, width: size, height: size)
+    ctx.setFillColor(NSColor(red: 0x3D / 255, green: 0x4D / 255, blue: 0xFF / 255, alpha: 1).cgColor)
+    ctx.fill(full)
+
+    // Map the 1024 design grid onto the canvas, centred on the bars' centre (512, 512); design y is down.
+    let k = size / 1024 * 1.12
+    for (i, bar) in bars.enumerated() {
+        let (x0, x1, y) = bar
+        let rect = CGRect(
+            x: size / 2 + (x0 - 512) * k,
+            y: size / 2 - (y + barHeight - 512) * k,
+            width: (x1 - x0) * k,
+            height: barHeight * k
         )
-    }
-    
-    // Top inner rim highlight
-    ctx.setLineWidth(size * 0.008)
-    ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.18).cgColor)
-    ctx.addPath(squirclePath)
-    ctx.strokePath()
-    ctx.restoreGState()
-    
-    // 2. Draw Minimalist Flat White C-Clamp Logo in Center
-    let logoScale = squircleRect.width * 0.62
-    let ox = squircleRect.midX - logoScale / 2.0
-    let oy = squircleRect.midY - logoScale / 2.0
-    
-    func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-        CGPoint(x: ox + x * logoScale, y: oy + y * logoScale)
-    }
-    func r(_ x: CGFloat, _ y: CGFloat, _ rw: CGFloat, _ rh: CGFloat) -> CGRect {
-        CGRect(x: ox + x * logoScale, y: oy + y * logoScale, width: rw * logoScale, height: rh * logoScale)
-    }
-    
-    ctx.saveGState()
-    ctx.setFillColor(NSColor.white.cgColor)
-    
-    // C-Frame Path
-    let cFrame = CGMutablePath()
-    let outerR = 0.22 * logoScale
-    let innerR = 0.12 * logoScale
-    
-    cFrame.move(to: p(0.66, 0.20))
-    cFrame.addLine(to: p(0.66, 0.28))
-    cFrame.addLine(to: p(0.56, 0.28))
-    cFrame.addLine(to: p(0.44, 0.28))
-    cFrame.addArc(tangent1End: p(0.36, 0.28), tangent2End: p(0.36, 0.40), radius: innerR)
-    cFrame.addLine(to: p(0.36, 0.60))
-    cFrame.addArc(tangent1End: p(0.36, 0.72), tangent2End: p(0.48, 0.72), radius: innerR)
-    cFrame.addLine(to: p(0.56, 0.72))
-    cFrame.addLine(to: p(0.56, 0.80))
-    cFrame.addLine(to: p(0.44, 0.80))
-    cFrame.addArc(tangent1End: p(0.20, 0.80), tangent2End: p(0.20, 0.58), radius: outerR)
-    cFrame.addLine(to: p(0.20, 0.42))
-    cFrame.addArc(tangent1End: p(0.20, 0.20), tangent2End: p(0.42, 0.20), radius: outerR)
-    cFrame.closeSubpath()
-    
-    ctx.addPath(cFrame)
-    ctx.fillPath()
-    
-    // Top Anvil Post & Head
-    let topPost = CGPath(roundedRect: r(0.57, 0.27, 0.08, 0.08), cornerWidth: 0.015 * logoScale, cornerHeight: 0.015 * logoScale, transform: nil)
-    ctx.addPath(topPost)
-    ctx.fillPath()
-    
-    let topAnvil = CGPath(roundedRect: r(0.51, 0.35, 0.20, 0.045), cornerWidth: 0.018 * logoScale, cornerHeight: 0.018 * logoScale, transform: nil)
-    ctx.addPath(topAnvil)
-    ctx.fillPath()
-    
-    // Bottom Clamp Plate & Threaded Screw
-    let bottomPlate = CGPath(roundedRect: r(0.46, 0.58, 0.30, 0.05), cornerWidth: 0.02 * logoScale, cornerHeight: 0.02 * logoScale, transform: nil)
-    ctx.addPath(bottomPlate)
-    ctx.fillPath()
-    
-    // Screw threads
-    let threadX: CGFloat = 0.55
-    let threadW: CGFloat = 0.12
-    let threadH: CGFloat = 0.022
-    for i in 0..<3 {
-        let ty: CGFloat = 0.64 + CGFloat(i) * 0.040
-        let thread = CGPath(roundedRect: r(threadX, ty, threadW, threadH), cornerWidth: 0.01 * logoScale, cornerHeight: 0.01 * logoScale, transform: nil)
-        ctx.addPath(thread)
+        let r = rect.height / 2
+        ctx.setFillColor(i == 2
+            ? NSColor(red: 1, green: 0x8A / 255, blue: 0x3D / 255, alpha: 1).cgColor
+            : NSColor.white.cgColor)
+        ctx.addPath(CGPath(roundedRect: rect, cornerWidth: r, cornerHeight: r, transform: nil))
         ctx.fillPath()
     }
-    
-    // Bottom handle knob
-    let knob = CGPath(roundedRect: r(0.53, 0.77, 0.16, 0.035), cornerWidth: 0.015 * logoScale, cornerHeight: 0.015 * logoScale, transform: nil)
-    ctx.addPath(knob)
-    ctx.fillPath()
-    
-    ctx.restoreGState()
-    
+
     img.unlockFocus()
     return img
 }
