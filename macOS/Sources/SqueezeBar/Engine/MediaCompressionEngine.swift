@@ -421,9 +421,10 @@ public actor MediaCompressionEngine {
         var candidateName = "\(baseName)\(suffix).\(targetExt)"
         var candidateURL = folder.appendingPathComponent(candidateName)
         
-        // Avoid overwriting if candidate already exists
+        // Avoid overwriting if candidate already exists or is reserved by another running job
         var counter = 1
-        while FileManager.default.fileExists(atPath: candidateURL.path) && candidateURL.path != sourceURL.path {
+        let reservedPaths = Set(activeDestinationURLs.values.map(\.path))
+        while (FileManager.default.fileExists(atPath: candidateURL.path) || reservedPaths.contains(candidateURL.path)) && candidateURL.path != sourceURL.path {
             candidateName = "\(baseName)\(suffix) (\(counter)).\(targetExt)"
             candidateURL = folder.appendingPathComponent(candidateName)
             counter += 1

@@ -81,7 +81,10 @@ public final class FolderWatchService: @unchecked Sendable {
                 
                 let itemURL = URL(fileURLWithPath: path).appendingPathComponent(item)
                 if MediaType.classify(url: itemURL) != .unsupported {
-                    urlsToProcess.append(itemURL)
+                    // Skip files still being copied in; wait for a stable size first
+                    if await Self.waitUntilStable(itemURL), !Task.isCancelled {
+                        urlsToProcess.append(itemURL)
+                    }
                 }
             }
             
@@ -89,5 +92,18 @@ public final class FolderWatchService: @unchecked Sendable {
                 await MediaCompressionEngine.shared.processDroppedURLs(urlsToProcess)
             }
         }
+    }
+
+    /// Polls until the file's size stops changing (copy finished). Gives up after ~2 minutes.
+    private static func waitUntilStable(_ url: URL) async -> Bool {
+        var lastSize: Int64 = -1
+        for _ in 0..<120 {
+            guard !Task.isCancelled else { return false }
+            guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64 else { return false }
+            if size == lastSize { return true }
+            lastSize = size
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        return false
     }
 }
