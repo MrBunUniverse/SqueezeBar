@@ -2229,16 +2229,14 @@ public struct QuickPopoverView: View {
                 settingsDivider()
 
                 HStack(spacing: 8) {
-                    Text("Fixed folder")
+                    Text("Save to folder")
                         .font(.system(size: 12, design: .rounded))
                     Spacer(minLength: 8)
-                    if let customFolder = state.customOutputFolder {
-                        Text(customFolder)
-                            .font(.system(size: 10.5, design: .rounded))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
+                    Text(state.customOutputFolder ?? String(localized: "Next to original"))
+                        .font(.system(size: 10.5, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     Button(state.customOutputFolder == nil ? "Choose…" : "Change…") {
                         chooseOutputFolder()
                     }

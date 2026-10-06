@@ -307,9 +307,6 @@
     "Finder right-click quick action" : {
 
     },
-    "Fixed folder" : {
-
-    },
     "Floating drop target that snaps to a screen edge" : {
 
     },
@@ -515,6 +512,9 @@
 
     },
     "Review settings first" : {
+
+    },
+    "Save to folder" : {
 
     },
     "Saved %@ so far" : {
