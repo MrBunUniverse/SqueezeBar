@@ -114,6 +114,12 @@
     "Audio Bitrate" : {
 
     },
+    "Audio compression cancelled" : {
+
+    },
+    "Audio compression failed: %@" : {
+
+    },
     "Auto-Squeeze Watch Folder" : {
 
     },
@@ -199,7 +205,19 @@
     "Complete" : {
 
     },
+    "Completed" : {
+
+    },
     "Completion Soundpack" : {
+
+    },
+    "Compressing %lld%%" : {
+
+    },
+    "Compressing..." : {
+
+    },
+    "Compression cancelled" : {
 
     },
     "Convert to Grayscale (B&W)" : {
@@ -325,10 +343,28 @@
     "Edit" : {
 
     },
+    "Encoding %lld%%" : {
+
+    },
     "Enter a format pattern. Use '#' or '{index}' for auto-incrementing numbers." : {
 
     },
     "Expanded" : {
+
+    },
+    "Failed" : {
+
+    },
+    "Failed to initialize AVAssetReader" : {
+
+    },
+    "Failed to initialize AVAssetReader for audio" : {
+
+    },
+    "Failed to initialize AVAssetWriter" : {
+
+    },
+    "Failed to initialize AVAssetWriter for audio" : {
 
     },
     "Finder Right-Click Quick Action" : {
@@ -439,6 +475,12 @@
     "Next to Original" : {
 
     },
+    "No audio track found in file" : {
+
+    },
+    "No valid video track found in file" : {
+
+    },
     "None (Uncategorized)" : {
 
     },
@@ -454,6 +496,9 @@
     "Optimized_{index}" : {
       "shouldTranslate" : false
     },
+    "Optimizing PDF %lld%%" : {
+
+    },
     "Optimizing..." : {
 
     },
@@ -464,6 +509,9 @@
 
     },
     "Output File Suffix" : {
+
+    },
+    "Output would overwrite the original file" : {
 
     },
     "Pause %@" : {
@@ -478,10 +526,16 @@
     "Pause this task" : {
 
     },
+    "Paused" : {
+
+    },
     "Pick color from screen" : {
 
     },
     "Plays dynamic audio feedback upon completing batch or single file squeezes." : {
+
+    },
+    "Queued" : {
 
     },
     "Quit" : {
@@ -532,11 +586,24 @@
     "Resume this task" : {
 
     },
+    "Resuming..." : {
+
+    },
     "Reveal in Finder" : {
 
     },
     "Save Destination" : {
 
+    },
+    "Saved %@ (-%lld%%)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Saved %1$@ (-%2$lld%%)"
+          }
+        }
+      }
     },
     "Scale, glass, accent colour" : {
 
@@ -601,6 +668,12 @@
     "This will remove recent items from your activity log. Original files on disk will not be deleted." : {
 
     },
+    "Unable to open or read audio source file" : {
+
+    },
+    "Unable to open or read video source file" : {
+
+    },
     "Uncategorized" : {
 
     },
@@ -610,10 +683,16 @@
     "Universal Media Optimizer" : {
 
     },
+    "Unsupported media format" : {
+
+    },
     "Video" : {
 
     },
     "Video Bitrate" : {
+
+    },
+    "Video encoding failed: %@" : {
 
     },
     "Welcome & File Access" : {

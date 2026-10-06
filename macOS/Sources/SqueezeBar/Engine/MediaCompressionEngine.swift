@@ -418,18 +418,40 @@ public actor MediaCompressionEngine {
         }
         
         let suffix = config.suffix.isEmpty ? "_min" : config.suffix
-        var candidateName = "\(baseName)\(suffix).\(targetExt)"
-        var candidateURL = folder.appendingPathComponent(candidateName)
-        
-        // Avoid overwriting if candidate already exists or is reserved by another running job
-        var counter = 1
         let reservedPaths = Set(activeDestinationURLs.values.map(\.path))
-        while (FileManager.default.fileExists(atPath: candidateURL.path) || reservedPaths.contains(candidateURL.path)) && candidateURL.path != sourceURL.path {
-            candidateName = "\(baseName)\(suffix) (\(counter)).\(targetExt)"
-            candidateURL = folder.appendingPathComponent(candidateName)
+        return Self.uniqueDestinationURL(
+            folder: folder,
+            baseName: baseName,
+            suffix: suffix,
+            extension: targetExt,
+            sourceURL: sourceURL,
+            reservedPaths: reservedPaths
+        )
+    }
+
+    /// Picks an output name that never collides with an existing file, the source itself,
+    /// or a path reserved by another running job.
+    static func uniqueDestinationURL(
+        folder: URL,
+        baseName: String,
+        suffix: String,
+        extension targetExt: String,
+        sourceURL: URL,
+        reservedPaths: Set<String> = []
+    ) -> URL {
+        let fm = FileManager.default
+        let sourcePath = sourceURL.standardizedFileURL.path
+        func isTaken(_ url: URL) -> Bool {
+            fm.fileExists(atPath: url.path)
+                || reservedPaths.contains(url.path)
+                || url.standardizedFileURL.path == sourcePath
+        }
+        var candidateURL = folder.appendingPathComponent("\(baseName)\(suffix).\(targetExt)")
+        var counter = 1
+        while isTaken(candidateURL) {
+            candidateURL = folder.appendingPathComponent("\(baseName)\(suffix) (\(counter)).\(targetExt)")
             counter += 1
         }
-        
         return candidateURL
     }
     

@@ -749,9 +749,15 @@ public final class AppState: ObservableObject {
             let targetURL = directory.appendingPathComponent(finalName)
             
             // Perform file system rename if file exists
-            if fm.fileExists(atPath: originalItem.outputURL.path) && originalItem.outputURL.path != targetURL.path {
-                try? fm.moveItem(at: originalItem.outputURL, to: targetURL)
-                recentResults[i].outputURL = targetURL
+            if fm.fileExists(atPath: originalItem.outputURL.path)
+                && originalItem.outputURL.path != targetURL.path
+                && !fm.fileExists(atPath: targetURL.path) {
+                do {
+                    try fm.moveItem(at: originalItem.outputURL, to: targetURL)
+                    recentResults[i].outputURL = targetURL
+                } catch {
+                    // Keep history pointing at the file that still exists.
+                }
             }
             
             index += 1

@@ -41,6 +41,11 @@ public struct HardwareVideoCompressor: Sendable {
         control: JobControl? = nil,
         progressHandler: (@Sendable (Double) -> Void)? = nil
     ) async throws {
+        // Never delete the input: the destination is removed below before the source is read.
+        guard sourceURL.standardizedFileURL.resolvingSymlinksInPath().path
+                != destinationURL.standardizedFileURL.resolvingSymlinksInPath().path else {
+            throw NSError(domain: "SqueezeBar", code: 409, userInfo: [NSLocalizedDescriptionKey: String(localized: "Output would overwrite the original file")])
+        }
         // Ensure destination does not exist
         try? FileManager.default.removeItem(at: destinationURL)
         
