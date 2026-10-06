@@ -271,9 +271,9 @@ public struct FloatingBallView: View {
             }
         } else {
             // Bold vibrant emblem with luminous ambient glow
-            Image(systemName: "archivebox.fill")
-                .font(.system(size: 23, weight: .bold, design: .rounded))
-                .foregroundColor(state.accentColor)
+            SqueezeClampShape()
+                .fill(state.accentColor)
+                .frame(width: 22, height: 26)
                 .shadow(color: state.accentColor.opacity(0.65), radius: 6, x: 0, y: 1)
                 .shadow(color: .black.opacity(0.40), radius: 3, x: 0, y: 1.5)
         }

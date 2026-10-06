@@ -33,7 +33,6 @@ public struct QuickPopoverView: View {
     public var isDetachedWindow: Bool = false
     @State private var selectedTab: PopoverTab = .activity
     @State private var isWindowDropTargeted: Bool = false
-    @State private var isGlassSettingsExpanded = true
     @State private var isAppearanceExpanded = false
     @State private var activeFormatCategory: MediaFormatCategory = .images
     @State private var isFormatDrawerExpanded: Bool = false
@@ -46,9 +45,9 @@ public struct QuickPopoverView: View {
     @State private var isBatchRenaming: Bool = false
     @State private var renamePattern: String = ""
     @State private var showClearConfirmation: Bool = false
+    @State private var showResetStatsConfirmation: Bool = false
     
     // Liquid Glass Collective Hover States (Apple-like Focus Bounce)
-    @State private var hoveredTab: PopoverTab? = nil
     @State private var hoveredTargetLimitMode: TargetSizeMode? = nil
     @State private var hoveredUIScaleOption: UIScaleOption? = nil
     @State private var soundThemeLiquidDirection = PillLiquidDirection.leadingToTrailing
@@ -88,9 +87,6 @@ public struct QuickPopoverView: View {
             let contentHeight = availableHeight / scale
             
             ZStack(alignment: .topLeading) {
-                LiquidGlassHoverField()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-
                 innerMainContent
                     .frame(width: contentWidth, height: contentHeight)
                     .scaleEffect(scale, anchor: .topLeading)
@@ -236,9 +232,15 @@ public struct QuickPopoverView: View {
                     .font(.system(size: 16, weight: .bold, design: .rounded))
                     .tracking(0.35)
                 
-                Text("Universal Media Optimizer")
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundColor(.secondary)
+                Group {
+                    if state.totalBytesSaved > 0 {
+                        Text("Saved \(ByteCountFormatter.string(fromByteCount: state.totalBytesSaved, countStyle: .file)) so far")
+                    } else {
+                        Text("Universal Media Optimizer")
+                    }
+                }
+                .font(.system(size: 11, weight: .regular, design: .rounded))
+                .foregroundColor(.secondary)
             }
             
             Spacer()
@@ -248,7 +250,7 @@ public struct QuickPopoverView: View {
                 Button {
                     FloatingDropWindowController.shared.dockToMenuBar()
                 } label: {
-                    Image(systemName: "arrow.down.right.and.arrow.up.left.square")
+                    Image(systemName: "pip.enter")
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundColor(.primary.opacity(0.85))
                         .frame(width: 24, height: 24)
@@ -259,14 +261,16 @@ public struct QuickPopoverView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .hoverGrow(1.12)
                 .help("Dock to Menu Bar")
+                .accessibilityLabel("Dock to Menu Bar")
             } else {
                 // Circular Undock button (Only shown in Menu Bar popover)
                 Button {
                     StatusBarController.sharedInstance?.closePopover(sender: nil)
                     FloatingDropWindowController.shared.showFloatingWindow()
                 } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right.square")
+                    Image(systemName: "pip.exit")
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundColor(.primary.opacity(0.85))
                         .frame(width: 24, height: 24)
@@ -277,7 +281,9 @@ public struct QuickPopoverView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .hoverGrow(1.12)
                 .help("Undock as Floating Window")
+                .accessibilityLabel("Undock as Floating Window")
             }
             
             if state.isProcessing {
@@ -286,7 +292,7 @@ public struct QuickPopoverView: View {
                         .scaleEffect(0.60)
                         .frame(width: 12, height: 12)
                     Text("Optimizing...")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
                         .foregroundColor(state.accentColor)
                     
                     Button {
@@ -300,6 +306,7 @@ public struct QuickPopoverView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Cancel All Compression")
+                    .accessibilityLabel("Cancel All Compression")
                 }
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
@@ -307,10 +314,10 @@ public struct QuickPopoverView: View {
             } else if state.showSuccessBadge {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 10, design: .rounded))
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundColor(.green)
                     Text("Complete")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                         .foregroundColor(.green)
                 }
                 .padding(.horizontal, 7)
@@ -326,125 +333,53 @@ public struct QuickPopoverView: View {
     
     // MARK: - Tab Selector
     private var tabSelectorView: some View {
-        HStack(spacing: 5) {
-            // Long Activity Tab Pill
-            let isActivitySelected = selectedTab == .activity
-            let isActivityHovered = hoveredTab == .activity
-            
-            Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                    selectedTab = .activity
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "bolt.horizontal.fill")
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                        .foregroundColor(isActivitySelected ? state.accentColor : .secondary.opacity(0.8))
-                    Text("Activity")
-                        .font(.system(size: 13, weight: isActivitySelected ? .semibold : .medium, design: .rounded))
-                        .foregroundColor(isActivitySelected ? .white : .secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(
-                    ZStack {
-                        if isActivitySelected {
-                            Capsule()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.19), Color.white.opacity(0.09)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .strokeBorder(
-                                            LinearGradient(
-                                                colors: [Color.white.opacity(0.35), Color.white.opacity(0.08)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ),
-                                            lineWidth: 0.75
-                                        )
-                                )
-                                .shadow(color: Color.black.opacity(0.25), radius: 4, y: 1.5)
-                        }
-                    }
-                )
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .scaleEffect(isActivityHovered ? 1.012 : 1.0)
-            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: hoveredTab)
-            .onHover { hovering in
-                withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.86)) {
-                    if hovering {
-                        hoveredTab = .activity
-                    } else if hoveredTab == .activity {
-                        hoveredTab = nil
-                    }
-                }
-            }
-            
-            // Settings tab
-            let isSettingsSelected = selectedTab == .settings
-            let isSettingsHovered = hoveredTab == .settings
-            
-            Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                    selectedTab = .settings
-                    FloatingDropWindowController.shared.ensureMinimumDimensions(width: 490, height: 660)
-                    StatusBarController.sharedInstance?.ensurePopoverDimensions(width: 490, height: 660)
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: isSettingsSelected ? "gearshape.fill" : "gearshape")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundColor(isSettingsSelected ? state.accentColor : .secondary)
-                    Text("Settings")
-                        .font(.system(size: 13, weight: isSettingsSelected ? .semibold : .medium, design: .rounded))
-                        .foregroundColor(isSettingsSelected ? .white : .secondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 36)
-                .contentShape(Capsule())
-                .background {
-                    if isSettingsSelected {
-                        Capsule()
-                            .fill(Color.white.opacity(0.15))
-                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.24), lineWidth: 0.75))
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .scaleEffect(isSettingsHovered ? 1.06 : 1.0)
-            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: hoveredTab)
-            .onHover { hovering in
-                withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.86)) {
-                    if hovering {
-                        hoveredTab = .settings
-                    } else if hoveredTab == .settings {
-                        hoveredTab = nil
-                    }
-                }
-            }
-            .help("App & Theme Settings")
+        HStack(spacing: 2) {
+            tabButton(.activity, title: "Activity", icon: "bolt.horizontal.fill", selectedIcon: "bolt.horizontal.fill")
+            tabButton(.settings, title: "Settings", icon: "gearshape", selectedIcon: "gearshape.fill")
+                .help("App & Theme Settings")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3.5)
+        .padding(2)
         .background(
             Capsule()
                 .fill(Color.black.opacity(0.24))
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                )
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
         )
         .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 2)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
-    
+
+    private func tabButton(_ tab: PopoverTab, title: LocalizedStringKey, icon: String, selectedIcon: String) -> some View {
+        let isSelected = selectedTab == tab
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                selectedTab = tab
+                if tab == .settings {
+                    FloatingDropWindowController.shared.ensureMinimumDimensions(width: 490, height: 660)
+                    StatusBarController.sharedInstance?.ensurePopoverDimensions(width: 490, height: 660)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isSelected ? selectedIcon : icon)
+                    .font(.system(size: 11, design: .rounded))
+                Text(title)
+                    .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium, design: .rounded))
+            }
+            .foregroundColor(isSelected ? .white : .secondary)
+            .frame(maxWidth: .infinity, minHeight: 28)
+            .background {
+                if isSelected {
+                    Capsule()
+                        .fill(Color.white.opacity(0.16))
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Live Format Selector Cards (Images, Video, Audio, PDF)
     private var statsSummaryCard: some View {
         HStack(spacing: 6) {
@@ -469,12 +404,12 @@ public struct QuickPopoverView: View {
                 }
             }
         } label: {
-            LiveProfileGlowCard(accentColor: state.accentColor, isSelected: isExpanded) {
+            LiveProfileGlowCard(accentColor: .white, isSelected: isExpanded) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
                         Image(systemName: icon)
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundColor(isExpanded ? state.accentColor : .primary.opacity(0.85))
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary.opacity(0.85))
                         Text(title)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(isExpanded ? .primary : .secondary)
@@ -483,7 +418,7 @@ public struct QuickPopoverView: View {
                         Spacer(minLength: 2)
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                             .font(.system(size: 7, weight: .bold, design: .rounded))
-                            .foregroundColor(isExpanded ? state.accentColor : .secondary.opacity(0.6))
+                            .foregroundColor(isExpanded ? .primary : .secondary.opacity(0.85))
                     }
                     .frame(height: 16)
 
@@ -520,7 +455,7 @@ public struct QuickPopoverView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .font(.system(size: 10.5, weight: .medium, design: .rounded))
                 .foregroundColor(.secondary)
             }
             
@@ -544,7 +479,7 @@ public struct QuickPopoverView: View {
                         }
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
                             .foregroundColor(.secondary)
                             .frame(width: 24, height: 24)
                             .contentShape(Rectangle())
@@ -590,7 +525,7 @@ public struct QuickPopoverView: View {
                         }
                     } label: {
                         Label(allPaused ? "Resume All" : "Pause All", systemImage: allPaused ? "play.fill" : "pause.fill")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(state.accentColor)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2.5)
@@ -614,7 +549,7 @@ public struct QuickPopoverView: View {
                         }
                     } label: {
                         Text(unfinished.count > 1 ? "Cancel All" : "Cancel")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(.red.opacity(0.85))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2.5)
@@ -654,7 +589,7 @@ public struct QuickPopoverView: View {
                     if !job.isFinished {
                         // Compact Progress Pill
                         Text("\(progressPct)%")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
                             .foregroundColor(state.accentColor)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
@@ -701,7 +636,7 @@ public struct QuickPopoverView: View {
                         .accessibilityLabel("Cancel \(job.fileURL.lastPathComponent)")
                     } else if job.error == "Cancelled" {
                         Text("Cancelled")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2.5)
@@ -754,35 +689,72 @@ public struct QuickPopoverView: View {
     }
     
     // MARK: - Recent History Section with Collapsible Folders & Batch Edit
+    private func chooseFilesToSqueeze() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = String(localized: "Add Files")
+        if panel.runModal() == .OK, !panel.urls.isEmpty {
+            let urls = panel.urls
+            Task {
+                await MediaCompressionEngine.shared.processDroppedURLs(urls)
+            }
+        }
+    }
+
+    /// Resting drop target for when history hides the full Quick Squeeze zone.
+    private var compactDropStrip: some View {
+        Button {
+            chooseFilesToSqueeze()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isDropTargeted ? "arrow.down.circle.fill" : "square.and.arrow.down")
+                    .font(.system(size: 13, design: .rounded))
+                    .foregroundColor(isDropTargeted ? state.accentColor : .secondary)
+                Text(isDropTargeted ? "Release to Squeeze" : "Drop files to squeeze")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(.primary)
+                Spacer()
+                Text("Choose…")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isDropTargeted ? state.accentColor.opacity(0.10) : Color.white.opacity(0.03))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(
+                                isDropTargeted ? state.accentColor.opacity(0.7) : Color.white.opacity(0.12),
+                                style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4])
+                            )
+                    )
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .help("Drop files here, or click to choose files to compress")
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            extractAndProcess(providers: providers)
+        }
+    }
+
     private var recentHistorySection: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if !(state.recentResults.isEmpty && state.customFolders.isEmpty) {
+                compactDropStrip
+            }
+
             // Header Bar
             HStack(spacing: 6) {
                 Text("Recent")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundColor(.primary)
 
-                Button {
-                    let panel = NSOpenPanel()
-                    panel.canChooseFiles = true
-                    panel.canChooseDirectories = false
-                    panel.allowsMultipleSelection = true
-                    panel.prompt = String(localized: "Add Files")
-                    if panel.runModal() == .OK, !panel.urls.isEmpty {
-                        let urls = panel.urls
-                        Task {
-                            await MediaCompressionEngine.shared.processDroppedURLs(urls)
-                        }
-                    }
-                } label: {
-                    Label("Add files", systemImage: "plus")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.white.opacity(0.07)))
-                }
-                .buttonStyle(.plain)
-                .help("Choose files to compress")
+
 
                 Spacer()
                 
@@ -820,7 +792,7 @@ public struct QuickPopoverView: View {
                         }
                     } label: {
                         Text(isEditMode ? "Done" : "Edit")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(isEditMode ? state.contrastTextColor : .secondary)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2.5)
@@ -851,7 +823,7 @@ public struct QuickPopoverView: View {
                     if !state.customFolders.isEmpty {
                         HStack {
                             Text("Uncategorized")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
                             
                             Spacer()
@@ -865,7 +837,7 @@ public struct QuickPopoverView: View {
                                         selectedResultIds.formUnion(ids)
                                     }
                                 }
-                                .font(.system(size: 9, design: .rounded))
+                                .font(.system(size: 10.5, design: .rounded))
                                 .buttonStyle(.plain)
                                 .foregroundColor(state.accentColor)
                             }
@@ -906,16 +878,16 @@ public struct QuickPopoverView: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: selectedResultIds.count == state.recentResults.count && !state.recentResults.isEmpty ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 10, design: .rounded))
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundColor(selectedResultIds.isEmpty ? .secondary : state.accentColor)
                     Text(selectedResultIds.count == state.recentResults.count && !state.recentResults.isEmpty ? "Deselect All" : "Select All")
-                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
                 }
             }
             .buttonStyle(.plain)
             
             Text("(\(selectedResultIds.count) selected)")
-                .font(.system(size: 9, design: .rounded))
+                .font(.system(size: 10.5, design: .rounded))
                 .foregroundColor(.secondary)
             
             Spacer()
@@ -928,9 +900,9 @@ public struct QuickPopoverView: View {
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "pencil.line")
-                            .font(.system(size: 9, design: .rounded))
+                            .font(.system(size: 10.5, design: .rounded))
                         Text("Rename")
-                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
                     }
                     .foregroundColor(state.contrastTextColor)
                     .padding(.horizontal, 6)
@@ -952,9 +924,9 @@ public struct QuickPopoverView: View {
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "folder")
-                            .font(.system(size: 9, design: .rounded))
+                            .font(.system(size: 10.5, design: .rounded))
                         Text("Move")
-                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
                     }
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 6)
@@ -971,7 +943,7 @@ public struct QuickPopoverView: View {
                     }
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 9.5, design: .rounded))
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundColor(.red.opacity(0.9))
                         .padding(5)
                         .background(Capsule().fill(Color.red.opacity(0.12)))
@@ -1040,7 +1012,7 @@ public struct QuickPopoverView: View {
                 .font(.system(size: 13, weight: .bold, design: .rounded))
             
             Text("Enter a format pattern. Use '#' or '{index}' for auto-incrementing numbers.")
-                .font(.system(size: 10, design: .rounded))
+                .font(.system(size: 10.5, design: .rounded))
                 .foregroundColor(.secondary)
             
             TextField("e.g. Homerenovation_# or Project_{index}", text: $renamePattern)
@@ -1050,12 +1022,12 @@ public struct QuickPopoverView: View {
             // Live Format Preview Box
             VStack(alignment: .leading, spacing: 3) {
                 Text("LIVE PREVIEW:")
-                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     .foregroundColor(.secondary.opacity(0.8))
                 
                 HStack(spacing: 4) {
                     Text("\(previewExample1).mp4,  \(previewExample2).mp4 ...")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
                         .foregroundColor(state.accentColor)
                         .lineLimit(1)
                 }
@@ -1071,7 +1043,7 @@ public struct QuickPopoverView: View {
                 Button("Homerenovation_#") {
                     renamePattern = "Homerenovation_#"
                 }
-                .font(.system(size: 9, design: .rounded))
+                .font(.system(size: 10.5, design: .rounded))
                 .buttonStyle(.plain)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -1080,7 +1052,7 @@ public struct QuickPopoverView: View {
                 Button("Optimized_{index}") {
                     renamePattern = "Optimized_{index}"
                 }
-                .font(.system(size: 9, design: .rounded))
+                .font(.system(size: 10.5, design: .rounded))
                 .buttonStyle(.plain)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -1126,159 +1098,109 @@ public struct QuickPopoverView: View {
     
     // MARK: - Quick Squeeze Zone (Instant 1-Drop Compression)
     private var quickSqueezeZone: some View {
-        VStack(spacing: 10) {
-            ZStack {
-                // Liquid ambient glow ring
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                (isDropTargeted ? state.accentColor : Color.white).opacity(isDropTargeted ? 0.35 : 0.08),
-                                Color.clear
-                            ],
-                            center: .center,
-                            startRadius: 4,
-                            endRadius: 32
-                        )
-                    )
-                    .frame(width: 58, height: 58)
-                
-                Image(systemName: isDropTargeted ? "arrow.down.circle.fill" : "square.and.arrow.down.on.square")
-                    .font(.system(size: 24, design: .rounded))
-                    .foregroundColor(isDropTargeted ? state.accentColor : .secondary.opacity(0.6))
-                    .scaleEffect(isDropTargeted ? 1.15 : 1.0)
-                    .animation(.spring(response: 0.28, dampingFraction: 0.65), value: isDropTargeted)
-            }
-            
-            VStack(spacing: 3) {
-                Text(isDropTargeted ? "Release to Squeeze" : "Ready to Squeeze")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .tracking(0.25)
-                    .foregroundColor(.primary)
-                
-                Text("Drop media to compress immediately with current presets")
-                    .font(.system(size: 9.5, weight: .regular, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            // Format Tags Pill Strip
-            HStack(spacing: 4) {
-                ForEach(["MP4", "MOV", "PNG", "JPG", "WebP", "PDF", "AAC", "WAV"], id: \.self) { fmt in
-                    Text(fmt)
-                        .font(.system(size: 8, weight: .semibold, design: .rounded))
+        VStack(spacing: 8) {
+            Button {
+                chooseFilesToSqueeze()
+            } label: {
+                VStack(spacing: 12) {
+                    Group {
+                        if isDropTargeted {
+                            SqueezeClampShape().fill(state.accentColor)
+                        } else {
+                            SqueezeWaveMark()
+                        }
+                    }
+                    .frame(width: 48, height: 57)
+                    .scaleEffect(isDropTargeted ? 1.12 : 1.0)
+
+                    VStack(spacing: 4) {
+                        Text(isDropTargeted ? "Release to Squeeze" : "Drop files to squeeze")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+
+                        Text("Compresses immediately with your current presets")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    Text("Images · Video · Audio · PDF, or click to choose")
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundColor(.secondary.opacity(0.85))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(Capsule().fill(Color.white.opacity(0.04)))
-                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
                 }
+                .frame(maxWidth: .infinity, minHeight: 190)
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(isDropTargeted ? state.accentColor.opacity(0.10) : Color.white.opacity(0.02))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(
+                                    isDropTargeted ? state.accentColor.opacity(0.7) : Color.white.opacity(0.12),
+                                    style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4])
+                                )
+                        )
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 12))
             }
-            
-            // Clipboard Squeeze Button
+            .buttonStyle(.plain)
+            .help("Drop files here, or click to choose files to compress")
+            .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isDropTargeted)
+            .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                extractAndProcess(providers: providers)
+            }
+
             Button {
                 state.squeezeClipboard()
             } label: {
-                HStack(spacing: 5) {
+                HStack(spacing: 6) {
                     Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 9, design: .rounded))
                     Text("Squeeze from Clipboard")
-                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
                     Text("⌘V")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .foregroundColor(.secondary.opacity(0.9))
-                        .padding(.horizontal, 3.5)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.white.opacity(0.1)))
+                        .foregroundColor(.secondary)
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4.5)
-                .background(
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
-                )
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.top, 2)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .padding(.horizontal, 14)
-        .scaleEffect(isDropTargeted ? 1.02 : 1.0)
-        .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isDropTargeted)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    isDropTargeted ? state.accentColor.opacity(0.10) :
-                    Color.white.opacity(0.02)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(
-                            isDropTargeted ? state.accentColor.opacity(0.7) : Color.white.opacity(0.08),
-                            style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4])
-                        )
-                )
-        )
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-            extractAndProcess(providers: providers)
         }
     }
-    
+
     // MARK: - Custom Staged Queue Section (Customize Settings Per File)
     private var customQueueSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if state.stagedQueue.isEmpty {
-                // Empty Queue Drop Target Card
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(state.accentColor.opacity(0.15))
-                                .frame(width: 28, height: 28)
-                            
-                            Image(systemName: isQueueDropTargeted ? "arrow.down.doc.fill" : "tray.and.arrow.down.fill")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundColor(state.accentColor)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(isQueueDropTargeted ? "Drop to Add to Queue" : "Custom Staged Queue")
-                                .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                            
-                            Text("Drop files here to customize individual settings before squeezing")
-                                .font(.system(size: 9, design: .rounded))
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
+                // Empty Queue Drop Target: quiet secondary option, not a second hero
+                HStack(spacing: 10) {
+                    Image(systemName: isQueueDropTargeted ? "arrow.down.doc.fill" : "slider.horizontal.3")
+                        .font(.system(size: 13, design: .rounded))
+                        .foregroundColor(isQueueDropTargeted ? state.accentColor : .secondary)
+                        .frame(width: 20)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(isQueueDropTargeted ? "Drop to Add to Queue" : "Review settings first")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundColor(.primary)
+
+                        Text("Drop files here to set options per file before squeezing")
+                            .font(.system(size: 10.5, design: .rounded))
+                            .foregroundColor(.secondary)
                     }
+
+                    Spacer()
                 }
-                .padding(12)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(isQueueDropTargeted ? state.accentColor.opacity(0.12) : Color.white.opacity(0.02))
+                        .fill(isQueueDropTargeted ? state.accentColor.opacity(0.12) : Color.white.opacity(0.04))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(
-                                    isQueueDropTargeted ? state.accentColor.opacity(0.8) : Color.white.opacity(0.08),
-                                    style: StrokeStyle(lineWidth: isQueueDropTargeted ? 1.5 : 1, dash: isQueueDropTargeted ? [] : [3])
-                                )
+                                .strokeBorder(isQueueDropTargeted ? state.accentColor.opacity(0.8) : Color.clear, lineWidth: 1.5)
                         )
                 )
-                .scaleEffect(isQueueDropTargeted ? 1.02 : 1.0)
                 .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isQueueDropTargeted)
                 .onDrop(of: [.fileURL], isTargeted: $isQueueDropTargeted) { providers in
                     extractAndAddToQueue(providers: providers)
@@ -1312,7 +1234,7 @@ public struct QuickPopoverView: View {
                         state.clearQueue()
                     }
                 }
-                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                 .foregroundColor(Color.red.opacity(0.88))
                 .buttonStyle(.plain)
                 
@@ -1321,9 +1243,9 @@ public struct QuickPopoverView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
                         Text("Squeeze All (\(state.stagedQueue.count))")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 9)
@@ -1345,10 +1267,10 @@ public struct QuickPopoverView: View {
             // Drop more files footer strip
             HStack(spacing: 6) {
                 Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 10, design: .rounded))
+                    .font(.system(size: 10.5, design: .rounded))
                     .foregroundColor(.secondary)
                 Text("Drop more files to add to queue")
-                    .font(.system(size: 9, design: .rounded))
+                    .font(.system(size: 10.5, design: .rounded))
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity)
@@ -1408,7 +1330,7 @@ public struct QuickPopoverView: View {
                 HStack(spacing: 6) {
                     HStack(spacing: 5) {
                         Image(systemName: activeFormatCategory == .images ? "photo" : (activeFormatCategory == .videos ? "film" : (activeFormatCategory == .audio ? "waveform" : "doc.text.fill")))
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
                             .foregroundColor(formatAccentColor(for: activeFormatCategory))
                         Text("\(activeFormatCategory.displayName) Settings")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -1428,15 +1350,15 @@ public struct QuickPopoverView: View {
                             Image(systemName: "chevron.up")
                                 .font(.system(size: 8, weight: .bold, design: .rounded))
                         }
-                        .foregroundColor(formatAccentColor(for: activeFormatCategory))
+                        .foregroundColor(Color.primary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(
                             Capsule()
-                                .fill(formatAccentColor(for: activeFormatCategory).opacity(0.12))
+                                .fill(Color.white.opacity(0.10))
                                 .overlay(
                                     Capsule()
-                                        .strokeBorder(formatAccentColor(for: activeFormatCategory).opacity(0.25), lineWidth: 0.5)
+                                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
                                 )
                         )
                     }
@@ -1489,22 +1411,14 @@ public struct QuickPopoverView: View {
             
             if state.targetSizeMode != .off {
                 Label(targetSizeAutomaticNote(for: category), systemImage: "wand.and.stars")
-                    .font(.system(size: 10, design: .rounded))
+                    .font(.system(size: 10.5, design: .rounded))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 
                 targetSizeToggles(for: category)
             }
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.035))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                )
-        )
+        .drawerSection()
     }
     
     private func targetSizeAutomaticNote(for category: MediaFormatCategory) -> String {
@@ -1527,7 +1441,7 @@ public struct QuickPopoverView: View {
                     .foregroundColor(state.accentColor)
             } else {
                 Text("Manual Quality")
-                    .font(.system(size: 9.5, weight: .regular, design: .rounded))
+                    .font(.system(size: 10.5, weight: .regular, design: .rounded))
                     .foregroundColor(.secondary)
             }
         }
@@ -1597,11 +1511,11 @@ public struct QuickPopoverView: View {
         VStack(spacing: 3) {
             HStack {
                 Text("Custom Max Size")
-                    .font(.system(size: 9, design: .rounded))
+                    .font(.system(size: 10.5, design: .rounded))
                     .foregroundColor(.secondary)
                 Spacer()
                 Text(String(format: "%.0f MB", state.customTargetSizeMB))
-                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                     .foregroundColor(state.accentColor)
             }
             
@@ -1695,15 +1609,7 @@ public struct QuickPopoverView: View {
                     state.imageQualityPreset = preset
                 })
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
             .targetSizeLocked(state: state, what: "quality")
             
             // Resolution Slider Card
@@ -1750,15 +1656,7 @@ public struct QuickPopoverView: View {
                     state.imageResolutionScale = scale
                 })
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
             
             // Format Policy Card
             VStack(alignment: .leading, spacing: 7) {
@@ -1805,15 +1703,7 @@ public struct QuickPopoverView: View {
                 }
                 .frame(height: 26)
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
         }
     }
     
@@ -1865,15 +1755,7 @@ public struct QuickPopoverView: View {
                     state.videoQualityPreset = preset
                 })
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
             .targetSizeLocked(state: state, what: "bitrate")
             
             // Video Resolution Slider Card
@@ -1920,15 +1802,7 @@ public struct QuickPopoverView: View {
                     state.videoResolutionScale = scale
                 })
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
             
             // Framerate & Codec Controls Card
             VStack(alignment: .leading, spacing: 7) {
@@ -2031,10 +1905,10 @@ public struct QuickPopoverView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
                             Label("GIF Framerate", systemImage: "speedometer")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             Spacer()
                             Text(state.gifFramerate.displayName)
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(state.accentColor)
                         }
                         
@@ -2072,7 +1946,7 @@ public struct QuickPopoverView: View {
                     } label: {
                         HStack(alignment: .center) {
                             Text("Mute / Remove Audio Track")
-                                .font(.system(size: 10, design: .rounded))
+                                .font(.system(size: 10.5, design: .rounded))
                                 .foregroundColor(.primary)
                             Spacer()
                             LiquidGlassSwitch(isOn: $state.videoRemoveAudio)
@@ -2082,15 +1956,7 @@ public struct QuickPopoverView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
         }
     }
     
@@ -2132,15 +1998,7 @@ public struct QuickPopoverView: View {
                     state.audioBitrate = rate
                 })
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
             .targetSizeLocked(state: state, what: "bitrate")
         }
     }
@@ -2185,15 +2043,7 @@ public struct QuickPopoverView: View {
                     state.pdfDPI = dpi
                 })
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
             
             // Embedded Image Quality Slider Card
             VStack(alignment: .leading, spacing: 7) {
@@ -2240,15 +2090,7 @@ public struct QuickPopoverView: View {
                     state.pdfImageQuality = quality
                 })
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
+            .drawerSection()
             
             // Advanced Document Optimization Toggles
             VStack(alignment: .leading, spacing: 7) {
@@ -2271,383 +2113,198 @@ public struct QuickPopoverView: View {
                     )
                 }
             }
-            .padding(10)
+            .drawerSection()
+        }
+    }
+    
+    // MARK: - General Settings
+    // MARK: - Settings building blocks
+    private func settingsGroupCard<Content: View>(_ title: LocalizedStringKey, icon: String, summary: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label(title, systemImage: icon)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary)
+                Spacer()
+                if let summary {
+                    Text(summary)
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                content()
+            }
+            .padding(14)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .fill(Color.white.opacity(0.035))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: 10)
                             .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
                     )
             )
         }
     }
-    
-    // MARK: - General Settings
+
+    private func settingsToggleRow(_ title: LocalizedStringKey, isOn: Binding<Bool>, detail: LocalizedStringKey? = nil, badge: LocalizedStringKey? = nil, action: (() -> Void)? = nil) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                if let action { action() } else { isOn.wrappedValue.toggle() }
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Text(title)
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundColor(.primary)
+                        if let badge {
+                            Text(badge)
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(Color.white.opacity(0.10)))
+                        }
+                    }
+                    if let detail {
+                        Text(detail)
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+                LiquidGlassSwitch(isOn: isOn)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func settingsDivider() -> some View {
+        Divider().opacity(0.15)
+    }
+
+    private var saveDestinationSummary: String {
+        state.customOutputFolder != nil
+            ? String(localized: "Custom Directory")
+            : (state.exportToSubfolder ? String(localized: "Automatic Subfolder") : String(localized: "Next to Original"))
+    }
+
+    private func chooseOutputFolder() {
+        let openPanel = NSOpenPanel()
+        openPanel.canChooseFiles = false
+        openPanel.canChooseDirectories = true
+        openPanel.allowsMultipleSelection = false
+        openPanel.canCreateDirectories = true
+        openPanel.prompt = String(localized: "Select Output Folder")
+        if openPanel.runModal() == .OK, let selectedURL = openPanel.url {
+            state.customOutputFolder = selectedURL.path
+        }
+    }
+
     private var generalSettingsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Output Directory & Suffix Card
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label("Save Destination", systemImage: "folder")
-                        .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                    Spacer()
-                    Text(state.customOutputFolder != nil ? "Custom Directory" : (state.exportToSubfolder ? "Automatic Subfolder" : "Next to Original"))
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundColor(state.accentColor)
-                }
-                
-                // Mode Switcher: Next to Original vs Auto Subfolder vs Custom Folder
-                VStack(alignment: .leading, spacing: 6) {
-                    Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                            state.exportToSubfolder.toggle()
-                        }
-                    } label: {
-                        HStack(alignment: .center) {
-                            Text("Create Subfolder for Compressed Files")
-                                .font(.system(size: 10, design: .rounded))
-                                .foregroundColor(.primary)
-                            Spacer()
-                            LiquidGlassSwitch(isOn: $state.exportToSubfolder)
-                        }
-                        .contentShape(Rectangle())
+            // Output: where files go and what they are called
+            settingsGroupCard("Output", icon: "folder", summary: saveDestinationSummary) {
+                settingsToggleRow("Create Subfolder for Compressed Files", isOn: $state.exportToSubfolder)
+
+                if state.exportToSubfolder {
+                    HStack(spacing: 6) {
+                        Text("Subfolder Name")
+                            .font(.system(size: 10.5, design: .rounded))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        TextField("Squeezed", text: $state.subfolderName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 110)
+                            .font(.system(size: 10.5, design: .rounded))
                     }
-                    .buttonStyle(.plain)
-                    
-                    if state.exportToSubfolder {
-                        HStack(spacing: 6) {
-                            Text("Subfolder Name:")
-                                .font(.system(size: 9.5, design: .rounded))
-                                .foregroundColor(.secondary)
-                            
-                            TextField("Squeezed", text: $state.subfolderName)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 110)
-                                .font(.system(size: 10, design: .rounded))
-                            
-                            Text("(e.g. ./Squeezed/)")
-                                .font(.system(size: 9.5, design: .rounded))
-                                .foregroundColor(.secondary.opacity(0.8))
-                        }
-                        .padding(.leading, 4)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                .padding(.vertical, 2)
-                
-                Divider().opacity(0.15)
-                
-                // Specific Custom Directory Override
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Or specify a fixed Global Output Directory:")
-                        .font(.system(size: 9, design: .rounded))
-                        .foregroundColor(.secondary)
-                    
+
+                settingsDivider()
+
+                HStack(spacing: 8) {
+                    Text("Fixed Folder")
+                        .font(.system(size: 12, design: .rounded))
+                    Spacer(minLength: 8)
                     if let customFolder = state.customOutputFolder {
                         Text(customFolder)
-                            .font(.system(size: 9, design: .rounded))
+                            .font(.system(size: 10.5, design: .rounded))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
+                            .truncationMode(.middle)
                     }
-                    
-                    HStack(spacing: 6) {
-                        Button {
-                            let openPanel = NSOpenPanel()
-                            openPanel.canChooseFiles = false
-                            openPanel.canChooseDirectories = true
-                            openPanel.allowsMultipleSelection = false
-                            openPanel.canCreateDirectories = true
-                            openPanel.prompt = String(localized: "Select Output Folder")
-                            if openPanel.runModal() == .OK, let selectedURL = openPanel.url {
-                                state.customOutputFolder = selectedURL.path
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "folder.badge.plus")
-                                    .font(.system(size: 9, design: .rounded))
-                                Text(state.customOutputFolder == nil ? "Choose Fixed Folder..." : "Change Folder...")
-                                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06)))
-                        }
-                        .buttonStyle(.plain)
-                        
-                        if state.customOutputFolder != nil {
-                            Button {
-                                state.customOutputFolder = nil
-                            } label: {
-                                Text("Clear")
-                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Color.red.opacity(0.88))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 4)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                    Button(state.customOutputFolder == nil ? "Choose…" : "Change…") {
+                        chooseOutputFolder()
+                    }
+                    .controlSize(.small)
+                    if state.customOutputFolder != nil {
+                        Button("Clear") { state.customOutputFolder = nil }
+                            .controlSize(.small)
                     }
                 }
-                
-                Divider().opacity(0.15).padding(.vertical, 2)
-                
+
+                settingsDivider()
+
                 HStack {
                     Text("Output File Suffix")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 12, design: .rounded))
                     Spacer()
                     TextField("_min", text: $state.outputSuffix)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 80)
                 }
-                
-                Divider().opacity(0.2)
-                
-                // MARK: - DropBall Desktop Widget Section
-                VStack(alignment: .leading, spacing: 10) {
-                    Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                            state.floatingBallEnabled.toggle()
-                        }
-                    } label: {
-                        HStack(alignment: .center, spacing: 6) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 5) {
-                                    Text("DropBall")
-                                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                                        .foregroundColor(.primary)
-                                    
-                                    Text("EDGE-DOCK")
-                                        .font(.system(size: 7.5, weight: .bold, design: .rounded))
-                                        .foregroundColor(state.accentColor)
-                                        .padding(.horizontal, 3.5)
-                                        .padding(.vertical, 0.5)
-                                        .background(Capsule().fill(state.accentColor.opacity(0.15)))
-                                }
-                                
-                                Text("Edge-docked liquid glass drop zone for instant 1-drop compression.")
-                                    .font(.system(size: 9.5, design: .rounded))
-                                    .foregroundColor(.secondary)
+
+                settingsDivider()
+
+                settingsToggleRow("Strip EXIF / Metadata", isOn: $state.stripMetadata, detail: "Removes location and camera info")
+            }
+
+            // Input methods other than the menu bar itself
+            settingsGroupCard("Input Methods", icon: "square.and.arrow.down") {
+                settingsToggleRow("DropBall", isOn: $state.floatingBallEnabled, detail: "Floating drop target that snaps to a screen edge")
+                settingsDivider()
+                settingsToggleRow("Finder Right-Click Quick Action", isOn: $state.finderServiceEnabled, badge: "BETA")
+                settingsDivider()
+                VStack(alignment: .leading, spacing: 8) {
+                    settingsToggleRow("Auto-Squeeze Watch Folder", isOn: $state.isWatchFolderEnabled, detail: "Compresses new files added to this folder")
+
+                    if state.isWatchFolderEnabled {
+                        HStack(spacing: 8) {
+                            Text(state.watchFolderPath ?? String(localized: "No folder selected"))
+                                .font(.system(size: 10.5, design: .rounded))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 8)
+                            Button(state.watchFolderPath == nil ? "Choose…" : "Change…") {
+                                selectWatchFolder()
                             }
-                            
-                            Spacer()
-                            LiquidGlassSwitch(isOn: $state.floatingBallEnabled)
+                            .controlSize(.small)
                         }
-                        .contentShape(Rectangle())
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                    .buttonStyle(.plain)
-                    
                 }
-                
-                Divider().opacity(0.2)
-                
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                        state.setLaunchAtLogin(enabled: !state.launchAtLogin)
+                .onChange(of: state.isWatchFolderEnabled) { _, enabled in
+                    if enabled, let path = state.watchFolderPath {
+                        FolderWatchService.shared.startMonitoring(path: path)
+                    } else {
+                        FolderWatchService.shared.stopMonitoring()
                     }
-                } label: {
-                    HStack(alignment: .center) {
-                        Text("Launch at System Startup")
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundColor(.primary)
-                        Spacer()
-                        LiquidGlassSwitch(isOn: $state.launchAtLogin)
-                    }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                
-                Divider().opacity(0.2)
-                
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                        state.finderServiceEnabled.toggle()
-                    }
-                } label: {
-                    HStack(alignment: .center, spacing: 5) {
-                        Text("Finder Right-Click Quick Action")
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundColor(.primary)
-                        
-                        Text("BETA")
-                            .font(.system(size: 7.5, weight: .bold, design: .rounded))
-                            .foregroundColor(state.accentColor)
-                            .padding(.horizontal, 3.5)
-                            .padding(.vertical, 0.5)
-                            .background(Capsule().fill(state.accentColor.opacity(0.15)))
-                        
-                        Spacer()
-                        LiquidGlassSwitch(isOn: $state.finderServiceEnabled)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                
-                Divider().opacity(0.2)
-                
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                        state.stripMetadata.toggle()
-                    }
-                } label: {
-                    HStack(alignment: .center) {
-                        Text("Strip EXIF / Metadata")
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundColor(.primary)
-                        Spacer()
-                        LiquidGlassSwitch(isOn: $state.stripMetadata)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                
-                Divider().opacity(0.2)
-                
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                        state.soundEnabled.toggle()
-                    }
-                } label: {
-                    HStack(alignment: .center) {
-                        Text("Sound Chime on Completion")
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundColor(.primary)
-                        Spacer()
-                        LiquidGlassSwitch(isOn: $state.soundEnabled)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                
-                Divider().opacity(0.2)
-                
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                        state.hapticEnabled.toggle()
-                    }
-                } label: {
-                    HStack(alignment: .center) {
-                        Text("Haptic Feedback on Completion")
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundColor(.primary)
-                        Spacer()
-                        LiquidGlassSwitch(isOn: $state.hapticEnabled)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                
-                Divider().opacity(0.2)
-                
-                Button {
-                    WelcomeWindowController.shared.show()
-                } label: {
-                    HStack(alignment: .center) {
-                        Image(systemName: "sparkles.tv")
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundColor(state.accentColor)
-                        Text("Welcome & File Access")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundColor(.primary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8, design: .rounded))
-                            .foregroundColor(.secondary)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                
-                Divider().opacity(0.2)
-                
-                Button("Reset All Compression Stats") {
-                    state.resetAllStats()
-                }
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundColor(.red.opacity(0.80))
-                .buttonStyle(.plain)
-                .padding(.top, 2)
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
-            // Watch Folder Card
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label("Auto-Squeeze Watch Folder", systemImage: "folder.badge.gearshape")
-                        .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                    Spacer()
-                    Button {
-                        let enabled = !state.isWatchFolderEnabled
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                            state.isWatchFolderEnabled = enabled
-                        }
-                    } label: {
-                        LiquidGlassSwitch(isOn: $state.isWatchFolderEnabled)
-                    }
-                    .buttonStyle(.plain)
-                    .onChange(of: state.isWatchFolderEnabled) { _, enabled in
-                        if enabled, let path = state.watchFolderPath {
-                            FolderWatchService.shared.startMonitoring(path: path)
-                        } else {
-                            FolderWatchService.shared.stopMonitoring()
-                        }
-                    }
-                }
-                
-                if let path = state.watchFolderPath {
-                    Text(path)
-                        .font(.system(size: 9, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                
-                Button {
-                    selectWatchFolder()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "folder")
-                            .font(.system(size: 9, design: .rounded))
-                        Text(state.watchFolderPath == nil ? "Select Folder to Watch..." : "Change Watch Folder...")
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06)))
-                }
-                .buttonStyle(.plain)
-                
-                Text("Monitors folder and automatically compresses any new image, video, or audio file dropped in.")
-                    .font(.system(size: 9, design: .rounded))
-                    .foregroundColor(.secondary)
-            }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white.opacity(0.035))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                    )
-            )
-            
-            // Completion Sound Effects Card
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label("Completion Soundpack", systemImage: "speaker.wave.3.fill")
-                        .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                    Spacer()
-                    Text(state.soundTheme.displayName)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundColor(state.accentColor)
-                }
-                
+
+            // Feedback: completion chime, haptics and soundpack
+            settingsGroupCard("Completion Feedback", icon: "speaker.wave.3.fill", summary: state.soundEnabled ? state.soundTheme.displayName : String(localized: "Off")) {
+                settingsToggleRow("Sound Chime on Completion", isOn: $state.soundEnabled)
+                settingsToggleRow("Haptic Feedback on Completion", isOn: $state.hapticEnabled)
+
+                VStack(alignment: .leading, spacing: 10) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                     ForEach(SoundEffectTheme.allCases, id: \.self) { sound in
                         Button {
@@ -2662,13 +2319,13 @@ public struct QuickPopoverView: View {
                                     progress: progress,
                                     flowsToLeading: flowsToLeading,
                                     baseColor: .primary.opacity(0.85),
-                                    revealColor: state.contrastTextColor
+                                    revealColor: .white
                                 ) { color in
                                     HStack(spacing: 4) {
                                         Image(systemName: sound.icon)
-                                            .font(.system(size: 9, design: .rounded))
+                                            .font(.system(size: 10.5, design: .rounded))
                                         Text(sound.shortName)
-                                            .font(.system(size: 9.5, weight: state.soundTheme == sound ? .semibold : .regular, design: .rounded))
+                                            .font(.system(size: 10.5, weight: state.soundTheme == sound ? .semibold : .regular, design: .rounded))
                                     }
                                     .foregroundColor(color)
                                     .padding(.horizontal, 6)
@@ -2678,7 +2335,7 @@ public struct QuickPopoverView: View {
                                 .background(
                                     ZStack {
                                         Capsule().fill(Color.white.opacity(0.05))
-                                        LiquidFillLayer(progress: progress, flowsToLeading: flowsToLeading, accentColor: state.accentColor, isSelected: state.soundTheme == sound)
+                                        LiquidFillLayer(progress: progress, flowsToLeading: flowsToLeading, accentColor: Color.white.opacity(0.3), isSelected: state.soundTheme == sound)
                                     }
                                     .clipShape(Capsule())
                                 )
@@ -2701,11 +2358,46 @@ public struct QuickPopoverView: View {
                 }
                 
                 Text("Plays dynamic audio feedback upon completing batch or single file squeezes.")
-                    .font(.system(size: 9.5, design: .rounded))
+                    .font(.system(size: 10.5, design: .rounded))
                     .foregroundColor(.secondary)
+                }
+                .opacity(state.soundEnabled ? 1 : 0.4)
+                .disabled(!state.soundEnabled)
             }
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.03)))
+
+            // General: app-level behaviour
+            settingsGroupCard("General", icon: "gearshape") {
+                settingsToggleRow("Launch at System Startup", isOn: $state.launchAtLogin, action: {
+                    state.setLaunchAtLogin(enabled: !state.launchAtLogin)
+                })
+                settingsDivider()
+                Button {
+                    WelcomeWindowController.shared.show()
+                } label: {
+                    HStack(alignment: .center) {
+                        Text("Welcome & File Access")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                settingsDivider()
+                Button("Reset All Compression Stats", role: .destructive) {
+                    showResetStatsConfirmation = true
+                }
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(.red.opacity(0.85))
+                .buttonStyle(.plain)
+            }
+            .confirmationDialog("Reset all compression stats?", isPresented: $showResetStatsConfirmation, titleVisibility: .visible) {
+                Button("Reset Stats", role: .destructive) { state.resetAllStats() }
+                Button("Cancel", role: .cancel) {}
+            }
             
             // Appearance group (scaling, glass, accent colour); collapsed by default
             VStack(alignment: .leading, spacing: 10) {
@@ -2716,14 +2408,14 @@ public struct QuickPopoverView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Label("Appearance", systemImage: "paintbrush")
-                            .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                            .foregroundColor(.primary)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
                         Spacer()
-                        Text("Scale, glass, accent colour")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                        Text("Scale, glass, accent color")
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
                             .foregroundColor(.secondary)
                         Image(systemName: isAppearanceExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
                             .foregroundColor(.secondary)
                     }
                     .contentShape(Rectangle())
@@ -2731,14 +2423,15 @@ public struct QuickPopoverView: View {
                 .buttonStyle(.plain)
 
                 if isAppearanceExpanded {
+                VStack(alignment: .leading, spacing: 12) {
                 // UI Scaling / Display Density Card
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Label("Interface Scaling", systemImage: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
                         Spacer()
                         Text("\(state.uiScale.displayName) (\(state.uiScale.percentageLabel))")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(state.accentColor)
                     }
                 
@@ -2783,52 +2476,36 @@ public struct QuickPopoverView: View {
                     })
 
                 }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.035))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                        )
-                )
+                Divider().opacity(0.15)
 
                 // App transparency and Liquid Glass controls
                 VStack(alignment: .leading, spacing: 10) {
-                    Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                            isGlassSettingsExpanded.toggle()
+                    HStack(spacing: 8) {
+                        Label("Window Glass", systemImage: "sparkles")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        Spacer(minLength: 4)
+                        Button("Reset") {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                state.appTransparency = 0
+                                state.appGlassFrost = 0.12
+                                state.appGlassDepth = 0.65
+                            }
                         }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Label("Liquid Glass", systemImage: "sparkles")
-                                .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Spacer(minLength: 4)
-                            Text("\(Int((state.appTransparency * 100).rounded()))% transparency")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundColor(state.accentColor)
-                            Image(systemName: isGlassSettingsExpanded ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 9, design: .rounded))
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Liquid Glass settings")
-                    .accessibilityValue(isGlassSettingsExpanded ? "Expanded" : "Collapsed")
-                    .accessibilityHint("Shows or hides transparency, frostedness, and depth controls")
 
-                    if isGlassSettingsExpanded {
+                    do {
                         VStack(alignment: .leading, spacing: 9) {
                             VStack(alignment: .leading, spacing: 5) {
                                 HStack {
-                                    Text("App Transparency")
+                                    Text("Transparency")
                                     Spacer()
                                     Text("\(Int((state.appTransparency * 100).rounded()))%")
                                         .foregroundColor(state.accentColor)
                                 }
-                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
 
                                 LiquidGlassSlider(
                                     value: $state.appTransparency,
@@ -2841,55 +2518,49 @@ public struct QuickPopoverView: View {
 
                             VStack(alignment: .leading, spacing: 5) {
                                 HStack {
-                                    Text("Frostedness")
+                                    Text("Blur")
                                     Spacer()
                                     Text("\(Int((state.appGlassFrost * 100).rounded()))%")
                                         .foregroundColor(state.accentColor)
                                 }
-                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
 
                                 LiquidGlassSlider(
                                     value: $state.appGlassFrost,
                                     range: 0...1,
                                     accentColor: state.accentColor
                                 )
-                                .accessibilityLabel("Liquid Glass frostedness")
+                                .accessibilityLabel("Window blur")
 
                             }
 
                             VStack(alignment: .leading, spacing: 5) {
                                 HStack {
-                                    Text("Depth")
+                                    Text("Shading")
                                     Spacer()
                                     Text("\(Int((state.appGlassDepth * 100).rounded()))%")
                                         .foregroundColor(state.accentColor)
                                 }
-                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
 
                                 LiquidGlassSlider(
                                     value: $state.appGlassDepth,
                                     range: 0...1,
                                     accentColor: state.accentColor
                                 )
-                                .accessibilityLabel("Liquid Glass depth")
+                                .accessibilityLabel("Window shading")
 
                             }
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.035))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
-                        )
-                )
+                Divider().opacity(0.15)
 
                 // Apple Minimalist Theme Accent Color Card
                 VStack(alignment: .leading, spacing: 8) {
+                    Text("Accent Color")
+                        .font(.system(size: 12, design: .rounded))
                     // Native macOS Style Swatch Circles
                     HStack(spacing: 8) {
                         ForEach(AccentColorTheme.allCases, id: \.self) { theme in
@@ -2947,12 +2618,12 @@ public struct QuickPopoverView: View {
                         
                             HStack(spacing: 8) {
                                 Text("HEX Code")
-                                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                                     .foregroundColor(.secondary)
                             
                                 HStack(spacing: 3) {
                                     Text("#")
-                                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
                                         .foregroundColor(.secondary)
                                 
                                     TextField("007AFF", text: Binding(
@@ -2992,7 +2663,7 @@ public struct QuickPopoverView: View {
                                             .shadow(color: Color.black.opacity(0.2), radius: 2)
                                     
                                         Image(systemName: "paintpalette")
-                                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                                             .foregroundColor(.secondary)
                                     }
                                     .padding(.horizontal, 5)
@@ -3066,8 +2737,8 @@ public struct QuickPopoverView: View {
                 
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                }
+                .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color.white.opacity(0.035))
@@ -3102,7 +2773,7 @@ public struct QuickPopoverView: View {
     private var footerView: some View {
         HStack {
             Text("SqueezeBar v1.1.0 • SirJameTV")
-                .font(.system(size: 9, design: .rounded))
+                .font(.system(size: 10.5, design: .rounded))
                 .foregroundColor(.secondary)
             
             Spacer()
@@ -3110,7 +2781,7 @@ public struct QuickPopoverView: View {
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
-            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .font(.system(size: 10.5, weight: .medium, design: .rounded))
             .buttonStyle(.plain)
             .foregroundColor(.secondary)
         }
@@ -3144,6 +2815,14 @@ public struct QuickPopoverView: View {
 
 // MARK: - Target-size lock for controls the engine ignores
 /// In a target-size mode the engine derives quality/bitrate from the size limit, so the manual control is dimmed and explained instead of silently doing nothing.
+/// Drawer controls sit on one surface separated by hairlines, not nested cards.
+private extension View {
+    func drawerSection() -> some View {
+        padding(.vertical, 10)
+            .overlay(alignment: .bottom) { Divider().opacity(0.12) }
+    }
+}
+
 private struct TargetSizeLockModifier: ViewModifier {
     @ObservedObject var state: AppState
     let what: String
@@ -3161,7 +2840,7 @@ private struct TargetSizeLockModifier: ViewModifier {
                 .opacity(isLocked ? 0.4 : 1)
             if isLocked {
                 Label("Automatic at \(limitLabel). Choose Manual to adjust \(what).", systemImage: "lock.fill")
-                    .font(.system(size: 10, design: .rounded))
+                    .font(.system(size: 10.5, design: .rounded))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 4)
             }
@@ -3330,103 +3009,23 @@ private final class ThumbnailCache: @unchecked Sendable {
     }
 }
 
-private struct LiquidGlassHoverField: View {
-    @State private var pointerLocation: CGPoint?
+/// Subtle "grow on hover" used by tabs and buttons instead of a highlight. Skipped when Reduce Motion is on.
+private struct HoverGrowModifier: ViewModifier {
+    let scale: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
 
-    private let diameter: CGFloat = 600
-    private let radius: CGFloat = 300
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .topLeading) {
-                HoverTrackingView { location in
-                    guard let location, pointerLocation != nil else {
-                        pointerLocation = location
-                        return
-                    }
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        pointerLocation = location
-                    }
-                }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-
-                if let location = pointerLocation {
-                    Circle()
-                        .fill(RadialGradient(
-                            stops: [
-                                .init(color: .black.opacity(0.09), location: 0),
-                                .init(color: .black.opacity(0.07), location: 0.42),
-                                .init(color: .black.opacity(0.04), location: 0.78),
-                                .init(color: .black.opacity(0.015), location: 0.95),
-                                .init(color: .clear, location: 1)
-                            ],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: radius
-                        ))
-                        .frame(width: diameter, height: diameter)
-                        .offset(x: location.x - radius, y: location.y - radius)
-                        .allowsHitTesting(false)
-
-                }
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-        }
-        .accessibilityHidden(true)
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isHovering && !reduceMotion ? scale : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isHovering)
+            .onHover { isHovering = $0 }
     }
 }
 
-private struct HoverTrackingView: NSViewRepresentable {
-    let onLocationChange: (CGPoint?) -> Void
-
-    func makeNSView(context: Context) -> HoverTrackingNSView {
-        let view = HoverTrackingNSView()
-        view.onLocationChange = onLocationChange
-        return view
-    }
-
-    func updateNSView(_ nsView: HoverTrackingNSView, context: Context) {
-        nsView.onLocationChange = onLocationChange
-    }
-}
-
-private final class HoverTrackingNSView: NSView {
-    var onLocationChange: ((CGPoint?) -> Void)?
-    private var mouseTrackingArea: NSTrackingArea?
-
-    override var isFlipped: Bool { true }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let mouseTrackingArea {
-            removeTrackingArea(mouseTrackingArea)
-        }
-        let trackingArea = NSTrackingArea(
-            rect: .zero,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(trackingArea)
-        mouseTrackingArea = trackingArea
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        updatePointerLocation(event)
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        updatePointerLocation(event)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        onLocationChange?(nil)
-    }
-
-    private func updatePointerLocation(_ event: NSEvent) {
-        onLocationChange?(convert(event.locationInWindow, from: nil))
+private extension View {
+    func hoverGrow(_ scale: CGFloat = 1.04) -> some View {
+        modifier(HoverGrowModifier(scale: scale))
     }
 }
 
@@ -3449,15 +3048,15 @@ private struct LiquidGlassToggleRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         Image(systemName: icon)
-                            .font(.system(size: 9.5, design: .rounded))
+                            .font(.system(size: 10.5, design: .rounded))
                             .foregroundColor(isOn ? state.accentColor : .secondary)
                         Text(title)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(.primary)
                     }
                     
                     Text(subtitle)
-                        .font(.system(size: 9.5, design: .rounded))
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundColor(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4051,7 +3650,7 @@ private struct SelectedPillDragGesture<Option: Hashable>: ViewModifier {
     }
 }
 
-// MARK: - Reusable selectable pill with liquid fill and cursor glow
+// MARK: - Reusable selectable pill with liquid fill
 private struct UniversalPillGliderItem<T: Hashable>: View {
     let item: T
     let title: String
@@ -4060,9 +3659,6 @@ private struct UniversalPillGliderItem<T: Hashable>: View {
     let accentColor: Color
     let contrastTextColor: Color
     let action: () -> Void
-    
-    @State private var isHovered = false
-    @State private var mouseLocation: CGPoint = .zero
     
     var body: some View {
         LiquidSelectionReader(isSelected: isSelected, id: AnyHashable(item)) { progress, flowsToLeading in
@@ -4075,13 +3671,13 @@ private struct UniversalPillGliderItem<T: Hashable>: View {
             LiquidRevealLabel(
                 progress: progress,
                 flowsToLeading: flowsToLeading,
-                baseColor: isHovered ? .white : .primary.opacity(0.85),
-                revealColor: contrastTextColor
+                baseColor: .primary.opacity(0.85),
+                revealColor: .white
             ) { color in
                 HStack(spacing: 4) {
                     if let icon = icon {
                         Image(systemName: icon)
-                            .font(.system(size: 9, design: .rounded))
+                            .font(.system(size: 10.5, design: .rounded))
                     }
                     Text(title)
                         .font(.system(size: 10.5, weight: isSelected ? .semibold : .medium, design: .rounded))
@@ -4098,81 +3694,29 @@ private struct UniversalPillGliderItem<T: Hashable>: View {
                     Capsule()
                         .fill(
                             LinearGradient(
-                                colors: [Color.white.opacity(isHovered ? 0.12 : 0.08), Color.white.opacity(isHovered ? 0.05 : 0.03)],
+                                colors: [Color.white.opacity(0.08), Color.white.opacity(0.03)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                    LiquidFillLayer(progress: progress, flowsToLeading: flowsToLeading, accentColor: accentColor, isSelected: isSelected)
-                    
-                    // Subtle Faded White Cursor Light Leak
-                    if isHovered && !isSelected {
-                        RadialGradient(
-                            gradient: Gradient(colors: [
-                                Color.white.opacity(0.14),
-                                Color.white.opacity(0.04),
-                                Color.clear
-                            ]),
-                            center: UnitPoint(
-                                x: mouseLocation.x / 65.0,
-                                y: mouseLocation.y / 24.0
-                            ),
-                            startRadius: 1,
-                            endRadius: 35
-                        )
-                        .clipShape(Capsule())
-                    }
+                    LiquidFillLayer(progress: progress, flowsToLeading: flowsToLeading, accentColor: Color.white.opacity(0.3), isSelected: isSelected)
                 }
             )
             .clipShape(Capsule())
             .overlay(
-                ZStack {
-                    Capsule()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [Color.white.opacity(isHovered ? 0.28 : 0.10), Color.white.opacity(0.04)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.5
-                        )
-                    
-                    if isHovered && !isSelected {
-                        Capsule()
-                            .strokeBorder(
-                                RadialGradient(
-                                    gradient: Gradient(colors: [
-                                        Color.white.opacity(0.40),
-                                        Color.white.opacity(0.10),
-                                        Color.clear
-                                    ]),
-                                    center: UnitPoint(
-                                        x: mouseLocation.x / 65.0,
-                                        y: mouseLocation.y / 24.0
-                                    ),
-                                    startRadius: 1,
-                                    endRadius: 30
-                                ),
-                                lineWidth: 0.75
-                            )
-                    }
-                }
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.10), Color.white.opacity(0.04)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
             )
         }
         .buttonStyle(.plain)
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let location):
-                withAnimation(.linear(duration: 0.05)) {
-                    mouseLocation = location
-                    isHovered = true
-                }
-            case .ended:
-                withAnimation(.easeOut(duration: 0.25)) {
-                    isHovered = false
-                }
-            }
-        }
+        .hoverGrow(1.05)
     }
 }
 
@@ -4210,7 +3754,7 @@ private struct FolderSectionItemView: View {
                     }
                 } label: {
                     Image(systemName: folder.isCollapsed ? "chevron.right" : "chevron.down")
-                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(.secondary)
                         .frame(width: 14, height: 18)
                         .contentShape(Rectangle())
@@ -4261,19 +3805,19 @@ private struct FolderSectionItemView: View {
                 // Folder item count & space saved badge
                 HStack(spacing: 3) {
                     Text("(\(itemsInFolder.count))")
-                        .font(.system(size: 9.5, design: .rounded))
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundColor(.secondary)
                     
                     if totalFolderSavedBytes > 0 {
                         Text("• -\(formattedFolderSaved)")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(.green.opacity(0.9))
                     }
                 }
                 
                 if isFolderDropTargeted {
                     Text("Drop to Add")
-                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(.green)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
@@ -4291,7 +3835,7 @@ private struct FolderSectionItemView: View {
                             selectedResultIds.formUnion(ids)
                         }
                     }
-                    .font(.system(size: 9, design: .rounded))
+                    .font(.system(size: 10.5, design: .rounded))
                     .buttonStyle(.plain)
                     .foregroundColor(effectiveFolderColor)
                 }
@@ -4311,7 +3855,7 @@ private struct FolderSectionItemView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 9, design: .rounded))
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundColor(.secondary)
                         .padding(4)
                 }
@@ -4337,8 +3881,8 @@ private struct FolderSectionItemView: View {
                             .foregroundColor(isFolderDropTargeted ? .green : effectiveFolderColor.opacity(0.6))
                         
                         Text(isFolderDropTargeted ? "Release to drop into \(folder.name)" : "Drop files here or use 'Move' in Edit mode")
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                            .foregroundColor(isFolderDropTargeted ? .green : .secondary.opacity(0.7))
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundColor(isFolderDropTargeted ? .green : .secondary.opacity(0.85))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -4492,7 +4036,7 @@ private struct QuickPopoverHistoryRowItem: View {
         }
 
         return Text(label)
-            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .font(.system(size: 10.5, weight: .medium, design: .rounded))
             .foregroundColor(tint)
             .lineLimit(1)
             .padding(.horizontal, 6.5)
@@ -4538,14 +4082,14 @@ private struct QuickPopoverHistoryRowItem: View {
                         .font(.system(size: 11, design: .rounded))
                         .foregroundColor(.secondary)
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 8, design: .rounded))
-                        .foregroundColor(.secondary.opacity(0.7))
+                        .font(.system(size: 10, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.85))
                     Text(item.formattedCompressedSize)
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundColor(item.compressedSize < item.originalSize ? state.accentColor : .secondary)
                     Text("·  \(item.timestamp, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))")
-                        .font(.system(size: 10, design: .rounded))
-                        .foregroundColor(.secondary.opacity(0.75))
+                        .font(.system(size: 10.5, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.85))
                         .lineLimit(1)
                 }
             }
@@ -4560,7 +4104,7 @@ private struct QuickPopoverHistoryRowItem: View {
                     InspectorWindowController.shared.show(result: item)
                 } label: {
                     Image(systemName: "slider.horizontal.below.rectangle")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
@@ -4573,7 +4117,7 @@ private struct QuickPopoverHistoryRowItem: View {
                     state.revealInFinder(url: item.outputURL)
                 } label: {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
@@ -4628,15 +4172,15 @@ private struct StagedQueueRowItem: View {
                 
                 HStack(spacing: 4) {
                     Text(item.formattedOriginalSize)
-                        .font(.system(size: 9, design: .rounded))
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundColor(.secondary)
                     
                     Text("•")
                         .font(.system(size: 8, design: .rounded))
-                        .foregroundColor(.secondary.opacity(0.4))
+                        .foregroundColor(.secondary.opacity(0.85))
                     
                     Text(customSettingSummary)
-                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundColor(state.accentColor.opacity(0.95))
                 }
             }
@@ -4649,9 +4193,9 @@ private struct StagedQueueRowItem: View {
             } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     Text("Custom")
-                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                 }
                 .foregroundColor(.white)
                 .padding(.horizontal, 6)
@@ -4672,7 +4216,7 @@ private struct StagedQueueRowItem: View {
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 12, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.6))
+                    .foregroundColor(.secondary.opacity(0.85))
                     .padding(3)
             }
             .buttonStyle(.plain)

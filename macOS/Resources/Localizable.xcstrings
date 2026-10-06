@@ -56,9 +56,6 @@
     "%lld%% quality" : {
 
     },
-    "%lld%% transparency" : {
-
-    },
     "%lld%% · %lld%% size" : {
       "localizations" : {
         "en" : {
@@ -78,11 +75,11 @@
     "(%lld)" : {
 
     },
-    "(e.g. ./Squeezed/)" : {
-
-    },
     "007AFF" : {
       "shouldTranslate" : false
+    },
+    "Accent Color" : {
+
     },
     "Activity" : {
 
@@ -90,16 +87,10 @@
     "Add Files" : {
 
     },
-    "Add files" : {
-
-    },
     "Allows smart downscaling + bitrate reduction" : {
 
     },
     "App & Theme Settings" : {
-
-    },
-    "App Transparency" : {
 
     },
     "App transparency" : {
@@ -112,12 +103,6 @@
 
     },
     "Audio Bitrate" : {
-
-    },
-    "Audio compression cancelled" : {
-
-    },
-    "Audio compression failed: %@" : {
 
     },
     "Auto-Squeeze Watch Folder" : {
@@ -140,6 +125,9 @@
 
     },
     "Batch Format Rename (%lld files)" : {
+
+    },
+    "Blur" : {
 
     },
     "Cancel" : {
@@ -166,22 +154,19 @@
     "Change Color" : {
 
     },
-    "Change Folder..." : {
+    "Change…" : {
 
     },
-    "Change Watch Folder..." : {
-
-    },
-    "Choose Fixed Folder..." : {
-
-    },
-    "Choose files to compress" : {
+    "Choose…" : {
 
     },
     "Clear" : {
 
     },
     "Clear All History" : {
+
+    },
+    "Clear Compression History" : {
 
     },
     "Clear History…" : {
@@ -196,28 +181,19 @@
     "Collapse Format Controls" : {
 
     },
-    "Collapsed" : {
-
-    },
     "Compare before and after" : {
 
     },
     "Complete" : {
 
     },
-    "Completed" : {
+    "Completion Feedback" : {
 
     },
-    "Completion Soundpack" : {
+    "Compresses immediately with your current presets" : {
 
     },
-    "Compressing %lld%%" : {
-
-    },
-    "Compressing..." : {
-
-    },
-    "Compression cancelled" : {
+    "Compresses new files added to this folder" : {
 
     },
     "Convert to Grayscale (B&W)" : {
@@ -253,12 +229,6 @@
     "Custom Max Size" : {
 
     },
-    "Custom Staged Queue" : {
-
-    },
-    "DROP" : {
-
-    },
     "Default App Theme Color" : {
 
     },
@@ -268,13 +238,13 @@
     "Delete Selected" : {
 
     },
-    "Depth" : {
-
-    },
     "Deselect All" : {
 
     },
     "Deselect item" : {
+
+    },
+    "Detach Floating Window" : {
 
     },
     "Dismiss" : {
@@ -307,16 +277,16 @@
     "Drop files here or use 'Move' in Edit mode" : {
 
     },
-    "Drop files here to compress them. Click to open SqueezeBar." : {
+    "Drop files here to set options per file before squeezing" : {
 
     },
-    "Drop files here to customize individual settings before squeezing" : {
+    "Drop files here, or click to choose files to compress" : {
+
+    },
+    "Drop files to squeeze" : {
 
     },
     "Drop here" : {
-
-    },
-    "Drop media to compress immediately with current presets" : {
 
     },
     "Drop more files to add to queue" : {
@@ -334,40 +304,19 @@
     "Dynamically scales audio to maximize video quality" : {
 
     },
-    "EDGE-DOCK" : {
-
-    },
-    "Edge-docked liquid glass drop zone for instant 1-drop compression." : {
-
-    },
     "Edit" : {
-
-    },
-    "Encoding %lld%%" : {
 
     },
     "Enter a format pattern. Use '#' or '{index}' for auto-incrementing numbers." : {
 
     },
-    "Expanded" : {
-
-    },
-    "Failed" : {
-
-    },
-    "Failed to initialize AVAssetReader" : {
-
-    },
-    "Failed to initialize AVAssetReader for audio" : {
-
-    },
-    "Failed to initialize AVAssetWriter" : {
-
-    },
-    "Failed to initialize AVAssetWriter for audio" : {
-
-    },
     "Finder Right-Click Quick Action" : {
+
+    },
+    "Fixed Folder" : {
+
+    },
+    "Floating drop target that snaps to a screen edge" : {
 
     },
     "Folder Color" : {
@@ -385,10 +334,10 @@
     "Framerate (FPS)" : {
 
     },
-    "Frostedness" : {
+    "GIF Framerate" : {
 
     },
-    "GIF Framerate" : {
+    "General" : {
 
     },
     "HEX Code" : {
@@ -397,7 +346,7 @@
     "Haptic Feedback on Completion" : {
 
     },
-    "Hide DropBall" : {
+    "Hide Desktop Drop Ball" : {
 
     },
     "Homerenovation_#" : {
@@ -410,6 +359,12 @@
 
     },
     "Images" : {
+
+    },
+    "Images · Video · Audio · PDF, or click to choose" : {
+
+    },
+    "Input Methods" : {
 
     },
     "Interface Scaling" : {
@@ -425,18 +380,6 @@
 
     },
     "Launch at System Startup" : {
-
-    },
-    "Liquid Glass" : {
-
-    },
-    "Liquid Glass depth" : {
-
-    },
-    "Liquid Glass frostedness" : {
-
-    },
-    "Liquid Glass settings" : {
 
     },
     "Lock Original Audio Quality" : {
@@ -460,9 +403,6 @@
     "Metadata removed" : {
 
     },
-    "Monitors folder and automatically compresses any new image, video, or audio file dropped in." : {
-
-    },
     "Move" : {
 
     },
@@ -475,13 +415,13 @@
     "Next to Original" : {
 
     },
-    "No audio track found in file" : {
-
-    },
-    "No valid video track found in file" : {
+    "No folder selected" : {
 
     },
     "None (Uncategorized)" : {
+
+    },
+    "Off" : {
 
     },
     "Open Anchored Color Wheel" : {
@@ -490,28 +430,22 @@
     "Open Before/After Comparison Inspector" : {
 
     },
-    "Open SqueezeBar" : {
+    "Open SqueezeBar Hub" : {
 
     },
     "Optimized_{index}" : {
       "shouldTranslate" : false
     },
-    "Optimizing PDF %lld%%" : {
-
-    },
     "Optimizing..." : {
-
-    },
-    "Or specify a fixed Global Output Directory:" : {
 
     },
     "Original (100%)" : {
 
     },
-    "Output File Suffix" : {
+    "Output" : {
 
     },
-    "Output would overwrite the original file" : {
+    "Output File Suffix" : {
 
     },
     "Pause %@" : {
@@ -526,22 +460,16 @@
     "Pause this task" : {
 
     },
-    "Paused" : {
-
-    },
     "Pick color from screen" : {
 
     },
     "Plays dynamic audio feedback upon completing batch or single file squeezes." : {
 
     },
-    "Queued" : {
-
-    },
     "Quit" : {
 
     },
-    "Ready to Squeeze" : {
+    "Quit SqueezeBar" : {
 
     },
     "Recent" : {
@@ -559,6 +487,9 @@
     "Removes author info and embedded thumbnail bloat" : {
 
     },
+    "Removes location and camera info" : {
+
+    },
     "Rename" : {
 
     },
@@ -568,7 +499,16 @@
     "Rename Folder" : {
 
     },
+    "Reset" : {
+
+    },
     "Reset All Compression Stats" : {
+
+    },
+    "Reset Stats" : {
+
+    },
+    "Reset all compression stats?" : {
 
     },
     "Resolution Scale" : {
@@ -586,32 +526,19 @@
     "Resume this task" : {
 
     },
-    "Resuming..." : {
-
-    },
     "Reveal in Finder" : {
 
     },
-    "Save Destination" : {
+    "Review settings first" : {
 
     },
-    "Saved %@ (-%lld%%)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Saved %1$@ (-%2$lld%%)"
-          }
-        }
-      }
+    "Saved %@ so far" : {
+
     },
-    "Scale, glass, accent colour" : {
+    "Scale, glass, accent color" : {
 
     },
     "Select All" : {
-
-    },
-    "Select Folder to Watch..." : {
 
     },
     "Select Output Folder" : {
@@ -626,7 +553,10 @@
     "Settings" : {
 
     },
-    "Shows or hides transparency, frostedness, and depth controls" : {
+    "Shading" : {
+
+    },
+    "Show Desktop Drop Ball" : {
 
     },
     "Sound Chime on Completion" : {
@@ -639,9 +569,6 @@
 
     },
     "SqueezeBar" : {
-
-    },
-    "SqueezeBar DropBall" : {
 
     },
     "SqueezeBar v1.1.0 • SirJameTV" : {
@@ -659,7 +586,7 @@
     "Strip EXIF / Metadata" : {
 
     },
-    "Subfolder Name:" : {
+    "Subfolder Name" : {
 
     },
     "Target Size Limit" : {
@@ -668,10 +595,7 @@
     "This will remove recent items from your activity log. Original files on disk will not be deleted." : {
 
     },
-    "Unable to open or read audio source file" : {
-
-    },
-    "Unable to open or read video source file" : {
+    "Transparency" : {
 
     },
     "Uncategorized" : {
@@ -683,19 +607,22 @@
     "Universal Media Optimizer" : {
 
     },
-    "Unsupported media format" : {
-
-    },
     "Video" : {
 
     },
     "Video Bitrate" : {
 
     },
-    "Video encoding failed: %@" : {
+    "Welcome & File Access" : {
 
     },
-    "Welcome & File Access" : {
+    "Window Glass" : {
+
+    },
+    "Window blur" : {
+
+    },
+    "Window shading" : {
 
     },
     "_min" : {
