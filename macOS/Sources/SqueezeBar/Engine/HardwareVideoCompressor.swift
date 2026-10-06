@@ -17,12 +17,12 @@ public struct HardwareVideoCompressor: Sendable {
         
         public var errorDescription: String? {
             switch self {
-            case .unreadableSource: return "Unable to open or read video source file"
-            case .noVideoTrackFound: return "No valid video track found in file"
-            case .cannotCreateReader: return "Failed to initialize AVAssetReader"
-            case .cannotCreateWriter: return "Failed to initialize AVAssetWriter"
-            case .encodingFailed(let msg): return "Video encoding failed: \(msg)"
-            case .cancelled: return "Compression cancelled"
+            case .unreadableSource: return String(localized: "Unable to open or read video source file")
+            case .noVideoTrackFound: return String(localized: "No valid video track found in file")
+            case .cannotCreateReader: return String(localized: "Failed to initialize AVAssetReader")
+            case .cannotCreateWriter: return String(localized: "Failed to initialize AVAssetWriter")
+            case .encodingFailed(let msg): return String(localized: "Video encoding failed: \(msg)")
+            case .cancelled: return String(localized: "Compression cancelled")
             }
         }
     }
@@ -38,6 +38,7 @@ public struct HardwareVideoCompressor: Sendable {
         from sourceURL: URL,
         to destinationURL: URL,
         config: CompressionConfiguration,
+        control: JobControl? = nil,
         progressHandler: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         // Ensure destination does not exist
@@ -67,6 +68,7 @@ public struct HardwareVideoCompressor: Sendable {
                 videoTrack: videoTrack,
                 destinationURL: destinationURL,
                 config: config,
+                control: control,
                 progressHandler: progressHandler
             )
             return
@@ -85,10 +87,9 @@ public struct HardwareVideoCompressor: Sendable {
         let sourceFPS = nominalFrameRate > 0 ? Double(nominalFrameRate) : 30.0
         let frameRate: Double = config.videoFramerate.targetFPS ?? sourceFPS
         
-        // Compute oriented dimensions
-        let isTransposed = preferredTransform.a == 0 && preferredTransform.d == 0
-        let sourceWidth = Int(isTransposed ? naturalSize.height : naturalSize.width)
-        let sourceHeight = Int(isTransposed ? naturalSize.width : naturalSize.height)
+        // Track output supplies unrotated pixels; the writer transform carries their display orientation.
+        let sourceWidth = Int(naturalSize.width)
+        let sourceHeight = Int(naturalSize.height)
         
         // ---- Source bitrate probing ----
         let sourceBitrate: Double
@@ -157,8 +158,8 @@ public struct HardwareVideoCompressor: Sendable {
                 autoScale = 1.0
             }
             
-            renderWidth = max(128, Int(Double(sourceWidth) * autoScale) & ~1)
-            renderHeight = max(128, Int(Double(sourceHeight) * autoScale) & ~1)
+            renderWidth = max(2, Int(Double(sourceWidth) * autoScale) & ~1)
+            renderHeight = max(2, Int(Double(sourceHeight) * autoScale) & ~1)
             
             targetBitrate = Int(min(availableVideoBitrate, sourceBitrate * 0.95))
         } else {
@@ -167,8 +168,8 @@ public struct HardwareVideoCompressor: Sendable {
             let resScale = min(max(config.videoResolutionScale, 0.25), 1.0)
             renderWidth = resScale < 0.999 ? Int(Double(sourceWidth) * resScale) : sourceWidth
             renderHeight = resScale < 0.999 ? Int(Double(sourceHeight) * resScale) : sourceHeight
-            renderWidth = max(128, renderWidth & ~1)
-            renderHeight = max(128, renderHeight & ~1)
+            renderWidth = max(2, renderWidth & ~1)
+            renderHeight = max(2, renderHeight & ~1)
             
             targetBitrate = calculateTargetBitrate(
                 sourceWidth: sourceWidth,
@@ -253,7 +254,12 @@ public struct HardwareVideoCompressor: Sendable {
         
         let writerVideoInput = AVAssetWriterInput(mediaType: .video, outputSettings: writerVideoInputSettings)
         writerVideoInput.expectsMediaDataInRealTime = false
-        writerVideoInput.transform = preferredTransform
+        let orientation = CGAffineTransform(a: preferredTransform.a, b: preferredTransform.b,
+                                            c: preferredTransform.c, d: preferredTransform.d, tx: 0, ty: 0)
+        let outputBounds = CGRect(x: 0, y: 0, width: renderWidth, height: renderHeight).applying(orientation)
+        writerVideoInput.transform = orientation.concatenating(
+            CGAffineTransform(translationX: -outputBounds.minX, y: -outputBounds.minY)
+        )
         
         guard writer.canAdd(writerVideoInput) else {
             throw VideoCompressorError.cannotCreateWriter
@@ -297,6 +303,7 @@ public struct HardwareVideoCompressor: Sendable {
             targetFPS: config.videoFramerate.targetFPS,
             sourceFPS: sourceFPS,
             totalDurationSeconds: totalDurationSeconds,
+            control: control,
             progressHandler: progressHandler
         )
         
@@ -363,6 +370,7 @@ public struct HardwareVideoCompressor: Sendable {
         videoTrack: AVAssetTrack,
         destinationURL: URL,
         config: CompressionConfiguration,
+        control: JobControl?,
         progressHandler: (@Sendable (Double) -> Void)?
     ) async throws {
         let totalDurationSeconds = CMTimeGetSeconds(duration)
@@ -371,9 +379,9 @@ public struct HardwareVideoCompressor: Sendable {
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
         let sourceFPS = nominalFrameRate > 0 ? Double(nominalFrameRate) : 30.0
         
-        let isTransposed = preferredTransform.a == 0 && preferredTransform.d == 0
-        let srcW = CGFloat(isTransposed ? naturalSize.height : naturalSize.width)
-        let srcH = CGFloat(isTransposed ? naturalSize.width : naturalSize.height)
+        let displayBounds = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let srcW = displayBounds.width
+        let srcH = displayBounds.height
         
         // Target framerate
         let targetFPS: Double
@@ -398,7 +406,25 @@ public struct HardwareVideoCompressor: Sendable {
         let outputSettings: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32ARGB)
         ]
-        let trackOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: outputSettings)
+        var layer = AVVideoCompositionLayerInstruction.Configuration(assetTrack: videoTrack)
+        layer.setTransform(
+            preferredTransform
+                .concatenating(CGAffineTransform(translationX: -displayBounds.minX, y: -displayBounds.minY))
+                .concatenating(CGAffineTransform(scaleX: CGFloat(dstW) / srcW, y: CGFloat(dstH) / srcH)),
+            at: .zero
+        )
+        let instruction = AVVideoCompositionInstruction(configuration: .init(
+            layerInstructions: [AVVideoCompositionLayerInstruction(configuration: layer)],
+            timeRange: CMTimeRange(start: .zero, duration: duration)
+        ))
+        let composition = AVVideoComposition(configuration: .init(
+            frameDuration: CMTime(seconds: 1.0 / sourceFPS, preferredTimescale: 600),
+            instructions: [instruction], renderSize: CGSize(width: dstW, height: dstH)
+        ))
+
+        // GIF has no track transform: rotate the pixels before encoding, rather than stretching raw frames.
+        let trackOutput = AVAssetReaderVideoCompositionOutput(videoTracks: [videoTrack], videoSettings: outputSettings)
+        trackOutput.videoComposition = composition
         trackOutput.alwaysCopiesSampleData = false
         
         guard reader.canAdd(trackOutput) else {
@@ -439,6 +465,15 @@ public struct HardwareVideoCompressor: Sendable {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         
         while let sampleBuffer = trackOutput.copyNextSampleBuffer() {
+            if let control {
+                while control.isPaused && !control.isCancelled {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                }
+                if control.isCancelled {
+                    reader.cancelReading()
+                    throw VideoCompressorError.cancelled
+                }
+            }
             let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
             let currentSec = CMTimeGetSeconds(timestamp)
             if totalDurationSeconds > 0 {
@@ -466,10 +501,8 @@ public struct HardwareVideoCompressor: Sendable {
                     ), let cgImage = context.makeImage() {
                         CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly)
                         
-                        if let resized = resizeFrame(cgImage, width: dstW, height: dstH, colorSpace: colorSpace) {
-                            CGImageDestinationAddImage(destination, resized, frameProperties as CFDictionary)
-                            addedCount += 1
-                        }
+                        CGImageDestinationAddImage(destination, cgImage, frameProperties as CFDictionary)
+                        addedCount += 1
                     } else {
                         CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly)
                     }
@@ -490,22 +523,6 @@ public struct HardwareVideoCompressor: Sendable {
         let finalData = mutableData as Data
         try finalData.write(to: destinationURL, options: .atomic)
         progressHandler?(1.0)
-    }
-    
-    private func resizeFrame(_ cgImage: CGImage, width: Int, height: Int, colorSpace: CGColorSpace) -> CGImage? {
-        guard let ctx = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        
-        ctx.interpolationQuality = .high
-        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-        return ctx.makeImage()
     }
     
     public func outputExtension(for sourceURL: URL, config: CompressionConfiguration) -> String {
@@ -530,6 +547,7 @@ private final class VideoEncodingContext: @unchecked Sendable {
     private let targetFPS: Double?
     private let sourceFPS: Double
     private let totalDurationSeconds: Double
+    private let control: JobControl?
     private let progressHandler: (@Sendable (Double) -> Void)?
     
     init(
@@ -542,10 +560,12 @@ private final class VideoEncodingContext: @unchecked Sendable {
         targetFPS: Double?,
         sourceFPS: Double,
         totalDurationSeconds: Double,
+        control: JobControl?,
         progressHandler: (@Sendable (Double) -> Void)?
     ) {
         self.reader = reader
         self.writer = writer
+        self.control = control
         self.readerVideoOutput = readerVideoOutput
         self.writerVideoInput = writerVideoInput
         self.readerAudioOutput = readerAudioOutput
@@ -579,6 +599,15 @@ private final class VideoEncodingContext: @unchecked Sendable {
             self.writerVideoInput.requestMediaDataWhenReady(on: videoQueue) { [weak self] in
                 guard let self = self else { return }
                 while self.writerVideoInput.isReadyForMoreMediaData {
+                    if let control = self.control, !control.checkpoint() {
+                        self.writerVideoInput.markAsFinished()
+                        if !hasFailed {
+                            hasFailed = true
+                            failureError = HardwareVideoCompressor.VideoCompressorError.cancelled
+                        }
+                        group.leave()
+                        return
+                    }
                     if let sampleBuffer = self.readerVideoOutput.copyNextSampleBuffer() {
                         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
                         let currentSec = CMTimeGetSeconds(timestamp)
@@ -623,6 +652,15 @@ private final class VideoEncodingContext: @unchecked Sendable {
                 self.writerAudioInput?.requestMediaDataWhenReady(on: audioQueue) { [weak self] in
                     guard let self = self, let wInput = self.writerAudioInput, let rOutput = self.readerAudioOutput else { return }
                     while wInput.isReadyForMoreMediaData {
+                        if let control = self.control, !control.checkpoint() {
+                            wInput.markAsFinished()
+                            if !hasFailed {
+                                hasFailed = true
+                                failureError = HardwareVideoCompressor.VideoCompressorError.cancelled
+                            }
+                            group.leave()
+                            return
+                        }
                         if let sampleBuffer = rOutput.copyNextSampleBuffer() {
                             if !wInput.append(sampleBuffer) {
                                 wInput.markAsFinished()

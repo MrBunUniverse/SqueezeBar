@@ -19,23 +19,23 @@ public struct QueueItemSettingsSheet: View {
                         .frame(width: 32, height: 32)
                     
                     Image(systemName: iconForMediaType(item.mediaType))
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundColor(state.accentColor)
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.fileName)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     
                     HStack(spacing: 6) {
                         Text(item.formattedOriginalSize)
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.system(size: 10, design: .rounded))
                             .foregroundColor(.secondary)
                         
                         Text(item.formatExtension)
-                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
                             .foregroundColor(state.accentColor)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
@@ -49,7 +49,7 @@ public struct QueueItemSettingsSheet: View {
                     presentationMode.wrappedValue.dismiss()
                 } label: {
                     Text("Done")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -71,23 +71,28 @@ public struct QueueItemSettingsSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text("Quality")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(.primary)
                             Spacer()
                             Text("\(Int(item.customQuality * 100))%")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
                                 .foregroundColor(state.accentColor)
                         }
                         
-                        Slider(value: $item.customQuality, in: 0.10...1.0, step: 0.05)
-                            .accentColor(state.accentColor)
+                        LiquidGlassSlider(
+                            value: $item.customQuality,
+                            range: 0.10...1.0,
+                            step: 0.05,
+                            accentColor: state.accentColor
+                        )
+                        .accessibilityLabel("Quality")
                     }
                     
                     // MARK: - Resolution Scale (Images & Videos)
                     if item.mediaType == .image || item.mediaType == .video {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Resolution Scale")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(.primary)
                             
                             HStack(spacing: 6) {
@@ -102,7 +107,7 @@ public struct QueueItemSettingsSheet: View {
                     // MARK: - Target Size Limit
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Target Size Limit")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(.primary)
                         
                         HStack(spacing: 6) {
@@ -128,9 +133,9 @@ public struct QueueItemSettingsSheet: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Strip EXIF & Metadata")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
                             Text("Remove GPS, camera, and author metadata")
-                                .font(.system(size: 9))
+                                .font(.system(size: 9, design: .rounded))
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
@@ -147,13 +152,14 @@ public struct QueueItemSettingsSheet: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(white: 0.12).opacity(0.98))
         )
+        .font(.system(.body, design: .rounded))
     }
     
     // MARK: - Image Format Picker
     private var imageFormatSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Output Format")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(.primary)
             
             Picker("", selection: $item.customImageFormat) {
@@ -161,6 +167,7 @@ public struct QueueItemSettingsSheet: View {
                 Text("Modern WebP").tag(ImageFormatPolicy.webpModern)
                 Text("Modern HEIC").tag(ImageFormatPolicy.heicModern)
                 Text("Modern AVIF").tag(ImageFormatPolicy.avifModern)
+                Text("PNG").tag(ImageFormatPolicy.pngLossless)
                 Text("Web JPEG").tag(ImageFormatPolicy.jpegStandard)
             }
             .pickerStyle(.menu)
@@ -172,7 +179,7 @@ public struct QueueItemSettingsSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Video Codec")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                 Picker("", selection: $item.customVideoCodec) {
                     Text("HEVC (H.265)").tag(VideoCodecPreference.hevc)
                     Text("H.264 Universal").tag(VideoCodecPreference.h264)
@@ -183,7 +190,7 @@ public struct QueueItemSettingsSheet: View {
             
             HStack {
                 Text("Remove Audio Track")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, design: .rounded))
                 Spacer()
                 Toggle("", isOn: $item.customVideoRemoveAudio)
                     .labelsHidden()
@@ -196,7 +203,7 @@ public struct QueueItemSettingsSheet: View {
     private var audioBitrateSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Audio Bitrate")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
             Picker("", selection: $item.customAudioBitrate) {
                 Text("320 kbps (Studio)").tag(AudioBitratePreference.k320)
                 Text("256 kbps (High)").tag(AudioBitratePreference.k256)
@@ -213,7 +220,7 @@ public struct QueueItemSettingsSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("PDF Render DPI")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                 Picker("", selection: $item.customPDFDPI) {
                     Text("300 DPI (Print)").tag(PDFDPIOption.dpi300)
                     Text("200 DPI (High)").tag(PDFDPIOption.dpi200)
@@ -225,7 +232,7 @@ public struct QueueItemSettingsSheet: View {
             
             HStack {
                 Text("Convert to Grayscale")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, design: .rounded))
                 Spacer()
                 Toggle("", isOn: $item.customPDFGrayscale)
                     .labelsHidden()
@@ -234,7 +241,7 @@ public struct QueueItemSettingsSheet: View {
         }
     }
     
-    private func scaleButton(title: String, value: Double) -> some View {
+    private func scaleButton(title: LocalizedStringKey, value: Double) -> some View {
         let isSelected = abs(item.customResolutionScale - value) < 0.01
         return Button {
             withAnimation(.spring(response: 0.22, dampingFraction: 0.72)) {
@@ -242,7 +249,7 @@ public struct QueueItemSettingsSheet: View {
             }
         } label: {
             Text(title)
-                .font(.system(size: 10, weight: isSelected ? .bold : .medium))
+                .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
                 .foregroundColor(isSelected ? .white : .secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 5)
@@ -258,7 +265,7 @@ public struct QueueItemSettingsSheet: View {
         .buttonStyle(.plain)
     }
     
-    private func targetSizeButton(title: String, mode: TargetSizeMode) -> some View {
+    private func targetSizeButton(title: LocalizedStringKey, mode: TargetSizeMode) -> some View {
         let isSelected = (item.customTargetSizeMode == mode)
         return Button {
             withAnimation(.spring(response: 0.22, dampingFraction: 0.72)) {
@@ -266,7 +273,7 @@ public struct QueueItemSettingsSheet: View {
             }
         } label: {
             Text(title)
-                .font(.system(size: 10, weight: isSelected ? .bold : .medium))
+                .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
                 .foregroundColor(isSelected ? .white : .secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 5)

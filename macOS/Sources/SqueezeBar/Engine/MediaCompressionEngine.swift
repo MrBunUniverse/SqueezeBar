@@ -44,6 +44,10 @@ public actor MediaCompressionEngine {
         activeDestinationURLs.removeAll()
     }
     
+    private func isCancelled(_ jobId: UUID) -> Bool {
+        cancelledJobIds.contains(jobId) || Task.isCancelled || JobControlRegistry.shared.control(for: jobId).isCancelled
+    }
+    
     private func registerJobTask(id: UUID, task: Task<Void, Never>) {
         activeJobTasks[id] = task
     }
@@ -73,9 +77,10 @@ public actor MediaCompressionEngine {
                 fileURL: item.fileURL,
                 mediaType: mediaType,
                 progress: 0.0,
-                statusText: "Queued"
+                statusText: String(localized: "Queued")
             )
             
+            _ = JobControlRegistry.shared.control(for: jobId)
             await AppState.shared.addJob(job)
             jobsToRun.append((url: item.fileURL, type: mediaType, jobId: jobId, origSize: originalSize, config: itemConfig))
         }
@@ -145,9 +150,10 @@ public actor MediaCompressionEngine {
                 fileURL: url,
                 mediaType: mediaType,
                 progress: 0.0,
-                statusText: "Queued"
+                statusText: String(localized: "Queued")
             )
             
+            _ = JobControlRegistry.shared.control(for: jobId)
             await AppState.shared.addJob(job)
             jobsToRun.append((url: url, type: mediaType, jobId: jobId, origSize: originalSize))
         }
@@ -208,7 +214,7 @@ public actor MediaCompressionEngine {
         config: CompressionConfiguration,
         targetFolderId: UUID? = nil
     ) async {
-        if cancelledJobIds.contains(jobId) || Task.isCancelled {
+        if isCancelled(jobId) {
             cancelledJobIds.remove(jobId)
             await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
             return
@@ -226,10 +232,10 @@ public actor MediaCompressionEngine {
         var destinationURL = generateDestinationURL(for: url, mediaType: mediaType, config: config)
         activeDestinationURLs[jobId] = destinationURL
         
-        await AppState.shared.updateJob(id: jobId, progress: 0.05, statusText: "Compressing...")
+        await AppState.shared.updateJob(id: jobId, progress: 0.05, statusText: String(localized: "Compressing..."))
         
         do {
-            if cancelledJobIds.contains(jobId) || Task.isCancelled {
+            if isCancelled(jobId) {
                 throw NSError(domain: "SqueezeBar", code: -999, userInfo: [NSLocalizedDescriptionKey: "Cancelled"])
             }
             try await executeCompression(
@@ -240,7 +246,7 @@ public actor MediaCompressionEngine {
                 jobId: jobId
             )
         } catch {
-            if cancelledJobIds.contains(jobId) || Task.isCancelled {
+            if isCancelled(jobId) {
                 cancelledJobIds.remove(jobId)
                 try? FileManager.default.removeItem(at: destinationURL)
                 await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
@@ -255,7 +261,7 @@ public actor MediaCompressionEngine {
                 destinationURL = fallbackURL
                 activeDestinationURLs[jobId] = destinationURL
                 
-                if cancelledJobIds.contains(jobId) || Task.isCancelled {
+                if isCancelled(jobId) {
                     throw NSError(domain: "SqueezeBar", code: -999, userInfo: [NSLocalizedDescriptionKey: "Cancelled"])
                 }
                 try await executeCompression(
@@ -266,7 +272,7 @@ public actor MediaCompressionEngine {
                     jobId: jobId
                 )
             } catch {
-                if cancelledJobIds.contains(jobId) || Task.isCancelled {
+                if isCancelled(jobId) {
                     cancelledJobIds.remove(jobId)
                     try? FileManager.default.removeItem(at: destinationURL)
                     await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
@@ -277,7 +283,7 @@ public actor MediaCompressionEngine {
             }
         }
         
-        if cancelledJobIds.contains(jobId) || Task.isCancelled {
+        if isCancelled(jobId) {
             cancelledJobIds.remove(jobId)
             try? FileManager.default.removeItem(at: destinationURL)
             await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
@@ -310,15 +316,19 @@ public actor MediaCompressionEngine {
         config: CompressionConfiguration,
         jobId: UUID
     ) async throws {
+        let gate = ProgressGate()
+        let control = JobControlRegistry.shared.control(for: jobId)
         switch mediaType {
         case .image:
             try imageCompressor.compressImage(
                 from: sourceURL,
                 to: destinationURL,
-                config: config
+                config: config,
+                control: control
             ) { progress in
+                guard gate.shouldReport(progress) else { return }
                 Task { @MainActor in
-                    AppState.shared.updateJob(id: jobId, progress: progress, statusText: "Compressing \(Int(progress * 100))%")
+                    AppState.shared.updateJob(id: jobId, progress: progress, statusText: String(localized: "Compressing \(Int(progress * 100))%"))
                 }
             }
             
@@ -326,10 +336,12 @@ public actor MediaCompressionEngine {
             try await videoCompressor.compressVideo(
                 from: sourceURL,
                 to: destinationURL,
-                config: config
+                config: config,
+                control: control
             ) { progress in
+                guard gate.shouldReport(progress) else { return }
                 Task { @MainActor in
-                    AppState.shared.updateJob(id: jobId, progress: progress, statusText: "Encoding \(Int(progress * 100))%")
+                    AppState.shared.updateJob(id: jobId, progress: progress, statusText: String(localized: "Encoding \(Int(progress * 100))%"))
                 }
             }
             
@@ -337,10 +349,12 @@ public actor MediaCompressionEngine {
             try await audioCompressor.compressAudio(
                 from: sourceURL,
                 to: destinationURL,
-                config: config
+                config: config,
+                control: control
             ) { progress in
+                guard gate.shouldReport(progress) else { return }
                 Task { @MainActor in
-                    AppState.shared.updateJob(id: jobId, progress: progress, statusText: "Encoding \(Int(progress * 100))%")
+                    AppState.shared.updateJob(id: jobId, progress: progress, statusText: String(localized: "Encoding \(Int(progress * 100))%"))
                 }
             }
             
@@ -348,15 +362,17 @@ public actor MediaCompressionEngine {
             try pdfCompressor.compressPDF(
                 from: sourceURL,
                 to: destinationURL,
-                config: config
+                config: config,
+                control: control
             ) { progress in
+                guard gate.shouldReport(progress) else { return }
                 Task { @MainActor in
-                    AppState.shared.updateJob(id: jobId, progress: progress, statusText: "Optimizing PDF \(Int(progress * 100))%")
+                    AppState.shared.updateJob(id: jobId, progress: progress, statusText: String(localized: "Optimizing PDF \(Int(progress * 100))%"))
                 }
             }
             
         case .unsupported:
-            throw NSError(domain: "SqueezeBar", code: 400, userInfo: [NSLocalizedDescriptionKey: "Unsupported media format"])
+            throw NSError(domain: "SqueezeBar", code: 400, userInfo: [NSLocalizedDescriptionKey: String(localized: "Unsupported media format")])
         }
     }
     
@@ -546,5 +562,21 @@ public actor MediaCompressionEngine {
     private func fileSize(of url: URL) -> Int64 {
         let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
         return (attrs?[.size] as? Int64) ?? 0
+    }
+}
+
+
+/// Encoders report progress per frame; only forward whole-percent changes so the UI isn't invalidated hundreds of times a second.
+private final class ProgressGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastPercent = -1
+
+    func shouldReport(_ progress: Double) -> Bool {
+        let percent = Int(progress * 100)
+        lock.lock()
+        defer { lock.unlock() }
+        guard percent != lastPercent else { return false }
+        lastPercent = percent
+        return true
     }
 }

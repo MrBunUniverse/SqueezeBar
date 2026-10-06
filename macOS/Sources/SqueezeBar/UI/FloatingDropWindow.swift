@@ -106,6 +106,10 @@ public final class FloatingDropWindowController: NSObject, NSWindowDelegate {
         AppState.shared.isDetached = false
         floatingPanel?.orderOut(nil)
     }
+
+    public func dismissDragPresentation() {
+        floatingPanel?.orderOut(nil)
+    }
     
     public func windowWillClose(_ notification: Notification) {
         AppState.shared.isDetached = false

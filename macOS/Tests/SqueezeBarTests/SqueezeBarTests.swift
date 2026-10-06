@@ -4,6 +4,35 @@ import CoreGraphics
 import ImageIO
 
 final class SqueezeBarTests: XCTestCase {
+    func testExplicitPNGStaysPNGAtLowQuality() throws {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 32, height: 24, bitsPerComponent: 8, bytesPerRow: 32 * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.clear(CGRect(x: 0, y: 0, width: 32, height: 24))
+        context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 0.5))
+        context.fill(CGRect(x: 8, y: 6, width: 16, height: 12))
+        let image = try XCTUnwrap(context.makeImage())
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("source.tiff")
+        let output = directory.appendingPathComponent("output.png")
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.tiff" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        var config = CompressionConfiguration()
+        config.imageFormatPolicy = .pngLossless
+        config.imageQuality = 0.3
+        let compressor = AcceleratedImageCompressor()
+        XCTAssertEqual(compressor.outputExtension(for: source, config: config), "png")
+        try compressor.compressImage(from: source, to: output, config: config)
+        XCTAssertEqual(Array(try Data(contentsOf: output).prefix(8)), [137, 80, 78, 71, 13, 10, 26, 10])
+        let decodedSource = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(decodedSource, 0, nil) as? [CFString: Any])
+        XCTAssertEqual(properties[kCGImagePropertyHasAlpha] as? Bool, true)
+    }
     
     func testMediaTypeClassification() {
         let pngURL = URL(fileURLWithPath: "/tmp/sample.png")
@@ -143,4 +172,3 @@ final class SqueezeBarTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: destURL.path))
     }
 }
-

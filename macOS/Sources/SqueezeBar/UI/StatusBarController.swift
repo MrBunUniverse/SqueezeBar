@@ -2,6 +2,32 @@ import Foundation
 import AppKit
 import SwiftUI
 
+struct FileDragSession {
+    enum Presentation { case popover, floatingWindow }
+    let openedPresentation: Presentation?
+    private var outsideSince: TimeInterval?
+    private var releasedSince: TimeInterval?
+
+    init(openedPresentation: Presentation?) {
+        self.openedPresentation = openedPresentation
+    }
+
+    mutating func markReleased(at time: TimeInterval) {
+        if releasedSince == nil { releasedSince = time }
+    }
+
+    mutating func shouldFinish(isInside: Bool, mousePressed: Bool, time: TimeInterval) -> Bool {
+        if !mousePressed { markReleased(at: time) }
+        if let releasedSince { return time - releasedSince >= 0.12 }
+        if isInside {
+            outsideSince = nil
+            return false
+        }
+        if outsideSince == nil { outsideSince = time }
+        return time - outsideSince! >= 0.25
+    }
+}
+
 @MainActor
 public final class StatusBarController: NSObject {
     public static weak var sharedInstance: StatusBarController?
@@ -9,12 +35,17 @@ public final class StatusBarController: NSObject {
     // MARK: - Dimensions
     private let normalWidth: CGFloat = 34.0
     private let barHeight: CGFloat = 24.0
+    private let dragHoverWidth: CGFloat = 118.0
     
     // MARK: - Properties
     private var statusItem: NSStatusItem!
     private var dropView: StatusItemDropView!
     private var popover: NSPopover!
     private var eventMonitor: Any?
+    private var dragEventMonitor: Any?
+    private var localDragEventMonitor: Any?
+    private var dragTrackingTimer: Timer?
+    private var fileDragSession: FileDragSession?
     
     public var window: NSWindow? {
         return popover?.contentViewController?.view.window
@@ -51,32 +82,55 @@ public final class StatusBarController: NSObject {
             button.registerForDraggedTypes([
                 .fileURL,
                 NSPasteboard.PasteboardType("NSFilenamesPboardType"),
-                NSPasteboard.PasteboardType("public.file-url")
+                NSPasteboard.PasteboardType("public.file-url"),
+                NSPasteboard.PasteboardType("com.apple.pasteboard.promised-file-url"),
+                NSPasteboard.PasteboardType("public.item")
             ])
         }
-    }
-    
-    // MARK: - Dynamic Status Item Sizing
-    public var idleWidth: CGFloat {
-        let state = AppState.shared
-        
-        switch state.menuBarDisplayStyle {
-        case .iconOnly:
-            return normalWidth
-        case .minimalMonochrome:
-            return 28.0
-        case .liveSavings:
-            let savedStr = ByteCountFormatter.string(fromByteCount: state.totalBytesSaved, countStyle: .file)
-            let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold)
-            let textWidth = (savedStr as NSString).size(withAttributes: [.font: font]).width
-            return normalWidth + textWidth + 10.0
+
+        let dragEvents: NSEvent.EventTypeMask = [.leftMouseDragged, .leftMouseUp, .keyDown]
+        dragEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: dragEvents) { [weak self] event in
+            self?.handleFileDragEvent(event)
         }
+        localDragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: dragEvents) { [weak self] event in
+            self?.handleFileDragEvent(event)
+            return event
+        }
+    }
+
+    private func handleFileDragEvent(_ event: NSEvent) {
+        if event.type == .keyDown {
+            if event.keyCode == 53 { finishFileDragHover() }
+        } else if event.type == .leftMouseUp {
+            scheduleFileDragEnd()
+        } else if fileDragSession != nil {
+            updateFileDragHover()
+        } else {
+            revealForNearbyFileDrag()
+        }
+    }
+
+    private func revealForNearbyFileDrag() {
+        guard fileDragSession == nil,
+              let button = statusItem.button,
+              let window = button.window else { return }
+
+        let buttonFrame = window.convertToScreen(button.convert(button.bounds, to: nil))
+        let dropZone = NSRect(
+            x: buttonFrame.minX - 18,
+            y: buttonFrame.minY - 48,
+            width: buttonFrame.width + 36,
+            height: buttonFrame.height + 48
+        )
+        guard dropZone.contains(NSEvent.mouseLocation),
+              StatusItemDropView.containsPotentialFileDragType(NSPasteboard(name: .drag).types ?? []) else { return }
+
+        dropView.beginDragHover()
     }
     
     public func updateStatusItemLength() {
-        let target = idleWidth
-        if statusItem.length != target {
-            statusItem.length = target
+        if statusItem.length != normalWidth {
+            statusItem.length = normalWidth
             dropView.needsDisplay = true
         }
     }
@@ -125,7 +179,7 @@ public final class StatusBarController: NSObject {
         }
     }
     
-    public func showPopover(sender: NSView? = nil) {
+    public func showPopover(sender: NSView? = nil, relativeTo anchor: NSRect? = nil) {
         if AppState.shared.isDetached {
             FloatingDropWindowController.shared.showFloatingWindow()
             return
@@ -134,10 +188,12 @@ public final class StatusBarController: NSObject {
         let targetView = sender ?? statusItem.button ?? dropView
         if let button = targetView {
             popover.behavior = AppState.shared.isPinned ? .applicationDefined : .transient
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.show(relativeTo: anchor ?? button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
             
             if let window = popover.contentViewController?.view.window {
+                window.isOpaque = false
+                window.backgroundColor = .clear
                 window.level = .floating
             }
             
@@ -158,6 +214,86 @@ public final class StatusBarController: NSObject {
             }
         }
     }
+
+    public func showPopoverForDrag(sender: NSView) {
+        guard fileDragSession == nil else { return }
+        let openedPresentation: FileDragSession.Presentation?
+        if AppState.shared.isDetached {
+            openedPresentation = FloatingDropWindowController.shared.window?.isVisible == true ? nil : .floatingWindow
+        } else {
+            openedPresentation = popover.isShown ? nil : .popover
+        }
+        fileDragSession = FileDragSession(openedPresentation: openedPresentation)
+        let timer = Timer(timeInterval: 0.06, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.updateFileDragHover() }
+        }
+        dragTrackingTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        RunLoop.main.add(timer, forMode: .eventTracking)
+        statusItem.length = max(normalWidth, dragHoverWidth)
+        dropView.needsDisplay = true
+        if AppState.shared.isDetached {
+            showPopover(sender: sender)
+            return
+        }
+        guard let button = statusItem.button else { return }
+        if !popover.isShown {
+            let anchor = NSRect(
+                x: max(button.bounds.minX, button.bounds.maxX - barHeight),
+                y: button.bounds.minY,
+                width: min(barHeight, button.bounds.width),
+                height: button.bounds.height
+            )
+            showPopover(sender: button, relativeTo: anchor)
+        }
+        if !AppState.shared.isPinned {
+            popover.behavior = .applicationDefined
+        }
+    }
+
+    private func updateFileDragHover() {
+        guard var session = fileDragSession else { return }
+        let mouse = NSEvent.mouseLocation
+        var isInside = false
+        if let button = statusItem.button, let window = button.window {
+            let frame = window.convertToScreen(button.convert(button.bounds, to: nil))
+            isInside = frame.insetBy(dx: -18, dy: -48).contains(mouse)
+        }
+        let contentWindow = AppState.shared.isDetached ? FloatingDropWindowController.shared.window : window
+        if let contentWindow, contentWindow.isVisible {
+            isInside = isInside || contentWindow.frame.insetBy(dx: -8, dy: -8).contains(mouse)
+        }
+        let shouldFinish = session.shouldFinish(
+            isInside: isInside,
+            mousePressed: NSEvent.pressedMouseButtons & 1 != 0,
+            time: ProcessInfo.processInfo.systemUptime
+        )
+        fileDragSession = session
+        if shouldFinish { finishFileDragHover() }
+    }
+
+    public func scheduleFileDragEnd() {
+        fileDragSession?.markReleased(at: ProcessInfo.processInfo.systemUptime)
+    }
+
+    public func finishFileDragHover(didDrop: Bool = false) {
+        let openedPresentation = fileDragSession?.openedPresentation
+        fileDragSession = nil
+        dragTrackingTimer?.invalidate()
+        dragTrackingTimer = nil
+        dropView.endDragHover()
+        if !didDrop {
+            switch openedPresentation {
+            case .popover: closePopover(sender: nil)
+            case .floatingWindow: FloatingDropWindowController.shared.dismissDragPresentation()
+            case nil: break
+            }
+        }
+        guard !AppState.shared.isDetached,
+              !AppState.shared.isPinned,
+              !(NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible) else { return }
+        popover.behavior = .transient
+    }
     
     public func updatePinState(pinned: Bool) {
         popover.behavior = pinned ? .applicationDefined : .transient
@@ -177,6 +313,7 @@ public final class StatusBarController: NSObject {
     }
     
     public func closePopover(sender: Any?) {
+        if fileDragSession != nil { finishFileDragHover(didDrop: true) }
         if NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible {
             CustomColorPanelManager.shared.close()
         }
@@ -196,12 +333,12 @@ public final class StatusBarController: NSObject {
         menu.addItem(NSMenuItem(title: "SqueezeBar", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         
-        let openItem = NSMenuItem(title: "Open SqueezeBar Hub", action: #selector(menuOpenHub), keyEquivalent: "o")
+        let openItem = NSMenuItem(title: String(localized: "Open SqueezeBar Hub"), action: #selector(menuOpenHub), keyEquivalent: "o")
         openItem.target = self
         menu.addItem(openItem)
         
         let detachItem = NSMenuItem(
-            title: AppState.shared.isDetached ? "Dock to Menu Bar" : "Detach Floating Window",
+            title: AppState.shared.isDetached ? String(localized: "Dock to Menu Bar") : String(localized: "Detach Floating Window"),
             action: #selector(menuToggleDetach),
             keyEquivalent: "d"
         )
@@ -209,22 +346,27 @@ public final class StatusBarController: NSObject {
         menu.addItem(detachItem)
         
         let ballItem = NSMenuItem(
-            title: AppState.shared.floatingBallEnabled ? "Hide Desktop Drop Ball" : "Show Desktop Drop Ball",
+            title: AppState.shared.floatingBallEnabled ? String(localized: "Hide Desktop Drop Ball") : String(localized: "Show Desktop Drop Ball"),
             action: #selector(menuToggleFloatingBall),
             keyEquivalent: "b"
         )
         ballItem.target = self
         menu.addItem(ballItem)
         
-        let clearItem = NSMenuItem(title: "Clear Compression History", action: #selector(menuClearHistory), keyEquivalent: "")
+        let clearItem = NSMenuItem(title: String(localized: "Clear Compression History"), action: #selector(menuClearHistory), keyEquivalent: "")
         clearItem.target = self
         menu.addItem(clearItem)
         
         menu.addItem(NSMenuItem.separator())
         
-        let quitItem = NSMenuItem(title: "Quit SqueezeBar", action: #selector(menuQuit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: String(localized: "Quit SqueezeBar"), action: #selector(menuQuit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
+
+        let menuFont = NSFont.roundedSystemFont(ofSize: NSFont.menuFont(ofSize: 0).pointSize, weight: .regular)
+        for item in menu.items where !item.isSeparatorItem {
+            item.attributedTitle = NSAttributedString(string: item.title, attributes: [.font: menuFont])
+        }
         
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
@@ -246,7 +388,7 @@ public final class StatusBarController: NSObject {
     @objc private func menuToggleFloatingBall() {
         AppState.shared.floatingBallEnabled.toggle()
     }
-    
+
     @objc private func menuClearHistory() {
         AppState.shared.clearHistory()
     }

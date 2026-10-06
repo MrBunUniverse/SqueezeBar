@@ -55,22 +55,14 @@ public final class StatusItemDropView: NSView {
         ])
         
         // Observe AppState
-        Publishers.CombineLatest4(
+        Publishers.CombineLatest3(
             AppState.shared.$isProcessing,
             AppState.shared.$overallProgress,
-            AppState.shared.$showSuccessBadge,
-            AppState.shared.$menuBarDisplayStyle
+            AppState.shared.$showSuccessBadge
         )
-        .combineLatest(AppState.shared.$totalBytesSaved, AppState.shared.$isProUser)
         .receive(on: DispatchQueue.main)
-        .sink { [weak self] baseTuple, totalSaved, isPro in
-            let (isProc, prog, isSuccess, _) = baseTuple
+        .sink { [weak self] isProc, prog, isSuccess in
             guard let self = self else { return }
-            
-            // Dynamically adjust item length based on display style when idle
-            if !self.isHoveringDrag {
-                self.controller?.updateStatusItemLength()
-            }
             
             if isSuccess {
                 self.mode = .success
@@ -108,38 +100,25 @@ public final class StatusItemDropView: NSView {
             return []
         }
         
-        isHoveringDrag = true
-        mode = .dragHover
+        beginDragHover()
         return .copy
     }
     
     public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let isValid = hasValidMediaFiles(in: sender)
-        if isValid && !isHoveringDrag {
-            isHoveringDrag = true
-            mode = .dragHover
-        }
+        if isValid { beginDragHover() }
         return isValid ? .copy : []
     }
     
-    public override func draggingExited(_ sender: NSDraggingInfo?) {
-        isHoveringDrag = false
-        controller?.updateStatusItemLength()
-        updateCurrentMode()
-    }
-    
     public override func draggingEnded(_ sender: NSDraggingInfo) {
-        isHoveringDrag = false
-        controller?.updateStatusItemLength()
-        updateCurrentMode()
+        controller?.scheduleFileDragEnd()
     }
     
     public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let urls = extractFileURLs(from: sender)
         guard !urls.isEmpty else { return false }
         
-        isHoveringDrag = false
-        controller?.updateStatusItemLength()
+        controller?.finishFileDragHover(didDrop: true)
         
         Task {
             await MediaCompressionEngine.shared.processDroppedURLs(urls)
@@ -165,10 +144,29 @@ public final class StatusItemDropView: NSView {
         if !urls.isEmpty {
             return true
         }
-        let types = sender.draggingPasteboard.types ?? []
-        return types.contains(.fileURL) ||
-               types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) ||
-               types.contains(NSPasteboard.PasteboardType("public.file-url"))
+        return Self.containsPotentialFileDragType(sender.draggingPasteboard.types ?? [])
+    }
+
+    static func containsPotentialFileDragType(_ types: [NSPasteboard.PasteboardType]) -> Bool {
+        types.contains(.fileURL) ||
+        types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) ||
+        types.contains(NSPasteboard.PasteboardType("public.file-url")) ||
+        types.contains(NSPasteboard.PasteboardType("com.apple.pasteboard.promised-file-url")) ||
+        types.contains(NSPasteboard.PasteboardType("public.item"))
+    }
+
+    func beginDragHover() {
+        guard !isHoveringDrag else { return }
+        isHoveringDrag = true
+        mode = .dragHover
+        controller?.showPopoverForDrag(sender: self)
+    }
+
+    func endDragHover() {
+        guard isHoveringDrag else { return }
+        isHoveringDrag = false
+        controller?.updateStatusItemLength()
+        updateCurrentMode()
     }
     
     private func extractFileURLs(from sender: NSDraggingInfo) -> [URL] {
@@ -223,94 +221,71 @@ public final class StatusItemDropView: NSView {
         }
     }
     
-    // MARK: - Render: Idle Icon & Supporter Menu Bar Styles
+    // MARK: - Render: Idle Icon
     private func drawIdleState(in rect: NSRect, context: CGContext) {
-        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let iconColor: NSColor = isHighlighted ? .systemBlue : (isDark ? .white : .white)
-        let state = AppState.shared
-        
-        let style = state.menuBarDisplayStyle
-        
-        switch style {
-        case .iconOnly:
-            let iconSize: CGFloat = 17.0
-            let clampImage = NSImage.squeezeClampImage(size: iconSize, color: iconColor)
-            let iconRect = NSRect(
-                x: (rect.width - iconSize) / 2,
-                y: (rect.height - iconSize) / 2,
-                width: iconSize,
-                height: iconSize
-            )
-            clampImage.draw(in: iconRect)
-            
-        case .minimalMonochrome:
-            // Sleek minimalist dot / diamond clamp
-            let dotSize: CGFloat = 7.0
-            let dotRect = NSRect(
-                x: (rect.width - dotSize) / 2,
-                y: (rect.height - dotSize) / 2,
-                width: dotSize,
-                height: dotSize
-            )
-            let dotPath = NSBezierPath(ovalIn: dotRect)
-            (isHighlighted ? NSColor.systemBlue : (isDark ? NSColor.white : NSColor.black)).setFill()
-            dotPath.fill()
-            
-        case .liveSavings:
-            // Squeeze clamp icon on left + crisp formatted saved MB on right
-            let iconSize: CGFloat = 14.0
-            let clampImage = NSImage.squeezeClampImage(size: iconSize, color: iconColor)
-            let iconRect = NSRect(
-                x: 6,
-                y: (rect.height - iconSize) / 2,
-                width: iconSize,
-                height: iconSize
-            )
-            clampImage.draw(in: iconRect)
-            
-            let savedStr = ByteCountFormatter.string(fromByteCount: state.totalBytesSaved, countStyle: .file)
-            let textFont = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold)
-            let textColor = isHighlighted ? NSColor.systemBlue : (isDark ? NSColor.white.withAlphaComponent(0.92) : NSColor.black.withAlphaComponent(0.85))
-            
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: textFont,
-                .foregroundColor: textColor
-            ]
-            let textSize = (savedStr as NSString).size(withAttributes: attrs)
-            let textRect = NSRect(
-                x: iconRect.maxX + 5,
-                y: (rect.height - textSize.height) / 2 + 0.5,
-                width: textSize.width,
-                height: textSize.height
-            )
-            (savedStr as NSString).draw(in: textRect, withAttributes: attrs)
-        }
-    }
-    
-    // MARK: - Render: In-Place Drop Hover Indicator
-    private func drawDragHoverPill(in rect: NSRect, context: CGContext) {
-        let pillInset: CGFloat = 2.5
-        let pillRect = rect.insetBy(dx: pillInset, dy: pillInset)
-        let pillPath = NSBezierPath(roundedRect: pillRect, xRadius: min(6.0, pillRect.height / 2), yRadius: min(6.0, pillRect.height / 2))
-        
-        // Background fill with vibrant glass accent tint
-        NSColor.systemBlue.withAlphaComponent(0.35).setFill()
-        pillPath.fill()
-        
-        // Stroke outline with glowing blue border
-        NSColor.systemBlue.setStroke()
-        pillPath.lineWidth = 1.5
-        pillPath.stroke()
-        
-        // Icon rendering
-        let iconSize: CGFloat = 16.0
-        let clampImage = NSImage.squeezeClampImage(size: iconSize, color: .white)
+        let iconSize: CGFloat = 17.0
+        let iconColor: NSColor = isHighlighted ? .systemBlue : .white
+        let clampImage = NSImage.squeezeClampImage(size: iconSize, color: iconColor)
         let iconRect = NSRect(
             x: (rect.width - iconSize) / 2,
             y: (rect.height - iconSize) / 2,
             width: iconSize,
             height: iconSize
         )
+        clampImage.draw(in: iconRect)
+    }
+    
+    // MARK: - Render: In-Place Drop Hover Indicator
+    private func drawDragHoverPill(in rect: NSRect, context: CGContext) {
+        let pillRect = NSRect(x: rect.minX + 3, y: rect.minY + 5, width: rect.width - 6, height: rect.height - 7)
+        let pillPath = NSBezierPath(roundedRect: pillRect, xRadius: 7, yRadius: 7)
+        let tailCenterX = rect.maxX - 17
+        let tailHalfWidth: CGFloat = 4
+        let tailBaseY = pillRect.minY + 0.5
+        let tailTipY = rect.minY + 1
+        let tail = NSBezierPath()
+        tail.move(to: CGPoint(x: tailCenterX - tailHalfWidth, y: tailBaseY))
+        tail.line(to: CGPoint(x: tailCenterX, y: tailTipY))
+        tail.line(to: CGPoint(x: tailCenterX + tailHalfWidth, y: tailBaseY))
+        tail.close()
+
+        let fillColor = NSColor.systemBlue.withAlphaComponent(0.88)
+        fillColor.setFill()
+        tail.fill()
+        pillPath.fill()
+        NSColor.systemBlue.setStroke()
+        pillPath.lineWidth = 1
+        pillPath.stroke()
+
+        let tailOutline = NSBezierPath()
+        tailOutline.move(to: CGPoint(x: tailCenterX - tailHalfWidth, y: tailBaseY + 1))
+        tailOutline.line(to: CGPoint(x: tailCenterX, y: tailTipY))
+        tailOutline.line(to: CGPoint(x: tailCenterX + tailHalfWidth, y: tailBaseY + 1))
+        tailOutline.lineWidth = 1
+        tailOutline.stroke()
+
+        let label = "Drop here" as NSString
+        let labelAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.roundedSystemFont(ofSize: 10.5, weight: .semibold),
+            .foregroundColor: NSColor.white
+        ]
+        let labelSize = label.size(withAttributes: labelAttributes)
+        let iconSize: CGFloat = 14
+        let iconRect = NSRect(
+            x: tailCenterX - iconSize / 2,
+            y: pillRect.midY - iconSize / 2,
+            width: iconSize,
+            height: iconSize
+        )
+        let labelRect = NSRect(
+            x: iconRect.minX - 6 - labelSize.width,
+            y: pillRect.midY - labelSize.height / 2,
+            width: labelSize.width,
+            height: labelSize.height
+        )
+        label.draw(in: labelRect, withAttributes: labelAttributes)
+
+        let clampImage = NSImage.squeezeClampImage(size: iconSize, color: .white)
         clampImage.draw(in: iconRect)
     }
     
@@ -346,7 +321,7 @@ public final class StatusItemDropView: NSView {
     private func drawSuccessState(in rect: NSRect, context: CGContext) {
         let iconConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .bold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(red: 0.2, green: 0.9, blue: 0.4, alpha: 1.0)]))
-        if let checkImage = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Completed")?.withSymbolConfiguration(iconConfig) {
+        if let checkImage = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: String(localized: "Completed"))?.withSymbolConfiguration(iconConfig) {
             let iconRect = NSRect(
                 x: (rect.width - 18) / 2,
                 y: (rect.height - 18) / 2,

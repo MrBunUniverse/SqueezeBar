@@ -92,45 +92,6 @@ public struct SqueezeClampShape: Shape {
     }
 }
 
-// MARK: - SwiftUI Logo View
-public struct SqueezeClampLogoView: View {
-    public var size: CGFloat = 22
-    public var color: Color = .white
-    public var showBackground: Bool = false
-    
-    public init(size: CGFloat = 22, color: Color = .white, showBackground: Bool = false) {
-        self.size = size
-        self.color = color
-        self.showBackground = showBackground
-    }
-    
-    public var body: some View {
-        ZStack {
-            if showBackground {
-                RoundedRectangle(cornerRadius: size * 0.24)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(white: 0.18), Color(white: 0.10)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: size, height: size)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: size * 0.24)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-                    )
-                    .shadow(color: .black.opacity(0.35), radius: size * 0.08, y: size * 0.04)
-            }
-            
-            SqueezeClampShape()
-                .fill(color)
-                .frame(width: showBackground ? size * 0.65 : size, height: showBackground ? size * 0.65 : size)
-        }
-        .frame(width: size, height: size)
-    }
-}
-
 // MARK: - AppKit Drawing Helper
 public extension NSImage {
     static func squeezeClampImage(size: CGFloat = 18, color: NSColor = .white) -> NSImage {

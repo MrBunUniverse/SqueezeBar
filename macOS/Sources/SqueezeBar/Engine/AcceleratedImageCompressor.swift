@@ -15,11 +15,11 @@ public struct AcceleratedImageCompressor: Sendable {
         
         public var errorDescription: String? {
             switch self {
-            case .invalidSourceData: return "Invalid or corrupt image data"
-            case .cannotCreateImageSource: return "Failed to open image source"
-            case .cannotCreateDestination: return "Failed to create destination image container"
-            case .cannotFinalizeDestination: return "Failed to encode and write compressed image"
-            case .noImageInSource: return "No valid image frame found in file"
+            case .invalidSourceData: return String(localized: "Invalid or corrupt image data")
+            case .cannotCreateImageSource: return String(localized: "Failed to open image source")
+            case .cannotCreateDestination: return String(localized: "Failed to create destination image container")
+            case .cannotFinalizeDestination: return String(localized: "Failed to encode and write compressed image")
+            case .noImageInSource: return String(localized: "No valid image frame found in file")
             }
         }
     }
@@ -45,6 +45,7 @@ public struct AcceleratedImageCompressor: Sendable {
         from sourceURL: URL,
         to destinationURL: URL,
         config: CompressionConfiguration,
+        control: JobControl? = nil,
         progressHandler: (@Sendable (Double) -> Void)? = nil
     ) throws {
         progressHandler?(0.05)
@@ -92,7 +93,7 @@ public struct AcceleratedImageCompressor: Sendable {
         // the bytes with .png extension — this is the only way to get real lossy
         // compression while keeping the .png filename the user expects.
         let actualOutputType: UTType
-        if isPNG && strategy.useJPEGFallback {
+        if isPNG && strategy.useJPEGFallback && config.imageFormatPolicy != .pngLossless {
             actualOutputType = .jpeg
         } else {
             actualOutputType = targetUTType
@@ -109,13 +110,27 @@ public struct AcceleratedImageCompressor: Sendable {
         
         // 5. Process each frame
         for i in 0..<frameCount {
+            if control?.isCancelled == true { throw CancellationError() }
             let frameProgress = 0.25 + (Double(i) / Double(max(frameCount, 1))) * 0.60
             progressHandler?(frameProgress)
             
             let frameProps = (CGImageSourceCopyPropertiesAtIndex(imageSource, i, nil) as? [CFString: Any]) ?? [:]
             
-            guard let cgImage = CGImageSourceCreateImageAtIndex(imageSource, i, sourceOptions as CFDictionary) else {
+            guard var cgImage = CGImageSourceCreateImageAtIndex(imageSource, i, sourceOptions as CFDictionary) else {
                 continue
+            }
+
+            // Bake EXIF rotation/mirroring into pixels so stripping metadata cannot turn a portrait sideways.
+            if ((frameProps[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1) != 1 {
+                let orientationOptions: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: max(cgImage.width, cgImage.height)
+                ]
+                guard let orientedImage = CGImageSourceCreateThumbnailAtIndex(imageSource, i, orientationOptions as CFDictionary) else {
+                    throw ImageCompressorError.noImageInSource
+                }
+                cgImage = orientedImage
             }
             
             // --- Resolution scaling (preserves aspect ratio without cropping) ---
@@ -145,7 +160,12 @@ public struct AcceleratedImageCompressor: Sendable {
                             kCGImagePropertyColorModel] {
                     if let val = frameProps[key] { opts[key] = val }
                 }
+                if var tiff = opts[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+                    tiff[kCGImagePropertyTIFFOrientation] = 1
+                    opts[kCGImagePropertyTIFFDictionary] = tiff
+                }
             }
+            opts[kCGImagePropertyOrientation] = 1
             
             // GIF frame timing
             if let gifProps = frameProps[kCGImagePropertyGIFDictionary] {
@@ -391,6 +411,8 @@ public struct AcceleratedImageCompressor: Sendable {
             return UTType(tag: "avif", tagClass: .filenameExtension, conformingTo: .image) ?? .heic
         case .jpegStandard:
             return .jpeg
+        case .pngLossless:
+            return .png
         case .preserveOriginal:
             switch ext {
             case "jpg", "jpeg":  return .jpeg
@@ -419,6 +441,7 @@ public struct AcceleratedImageCompressor: Sendable {
         case .webpModern:   return "webp"
         case .avifModern:   return "avif"
         case .jpegStandard: return "jpg"
+        case .pngLossless:  return "png"
         case .preserveOriginal:
             return ext.isEmpty ? "jpg" : ext
         }

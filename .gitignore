@@ -4,16 +4,8 @@
 SqueezeBar.app/
 *.xcodeproj
 *.xcworkspace
-userdata/
 .swiftpm/
 *.zip
-bin/
-**/bin/
-obj/
-**/obj/
 dist/
 **/dist/
-dist_single/
-**/dist_single/
-*.dll
-*.pdb
+*.dmg

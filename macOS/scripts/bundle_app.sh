@@ -20,6 +20,12 @@ if [ -f "Resources/AppIcon.icns" ]; then
     cp "Resources/AppIcon.icns" "${DEST_APP}/Contents/Resources/AppIcon.icns"
 fi
 
+# Compile the string catalog into per-language .lproj folders (add translations to Resources/Localizable.xcstrings)
+if [ -f "Resources/Localizable.xcstrings" ]; then
+    echo "[SqueezeBar] Compiling localizations..."
+    xcrun xcstringstool compile "Resources/Localizable.xcstrings" --output-directory "${DEST_APP}/Contents/Resources"
+fi
+
 # Optional codesign with ad-hoc signature for local execution
 if command -v codesign &> /dev/null; then
     echo "[SqueezeBar] Signing application bundle with entitlements..."

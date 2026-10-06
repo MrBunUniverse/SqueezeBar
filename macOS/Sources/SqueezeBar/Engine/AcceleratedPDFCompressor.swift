@@ -13,11 +13,11 @@ public enum PDFCompressorError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .invalidDocument:
-            return "Unable to open or parse the PDF document."
+            return String(localized: "Unable to open or parse the PDF document.")
         case .cannotCreatePage:
-            return "Failed to render or compress PDF pages."
+            return String(localized: "Failed to render or compress PDF pages.")
         case .cannotWriteDestination:
-            return "Failed to save the compressed PDF to destination."
+            return String(localized: "Failed to save the compressed PDF to destination.")
         }
     }
 }
@@ -33,6 +33,7 @@ public struct AcceleratedPDFCompressor: Sendable {
         from sourceURL: URL,
         to destinationURL: URL,
         config: CompressionConfiguration,
+        control: JobControl? = nil,
         progressHandler: @escaping @Sendable (Double) -> Void
     ) throws {
         guard let sourceDoc = PDFDocument(url: sourceURL), sourceDoc.pageCount > 0 else {
@@ -68,6 +69,7 @@ public struct AcceleratedPDFCompressor: Sendable {
         let outputDoc = PDFDocument()
         
         for index in 0..<totalPages {
+            if control?.isCancelled == true { throw CancellationError() }
             guard let page = sourceDoc.page(at: index) else { continue }
             let mediaBounds = page.bounds(for: .mediaBox)
             let pageRotation = page.rotation

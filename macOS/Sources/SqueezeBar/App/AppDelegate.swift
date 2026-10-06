@@ -18,6 +18,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Start watch folder monitoring if enabled
         let state = AppState.shared
+        let welcome = WelcomeWindowController.shared
         if state.isWatchFolderEnabled, let path = state.watchFolderPath {
             FolderWatchService.shared.startMonitoring(path: path)
         }
@@ -27,9 +28,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             FloatingBallController.shared.show()
         }
         
-        // Present first-time onboarding setup tour
-        if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding_v1") {
-            OnboardingWindowController.shared.show()
+        if !UserDefaults.standard.bool(forKey: WelcomeWindowController.completedKey) {
+            welcome.show()
         }
     }
 

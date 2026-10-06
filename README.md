@@ -1,38 +1,26 @@
 # SqueezeBar
 
-Universal media optimizer for macOS and Windows.
+Media optimizer for macOS 26+, living in your menu bar.
 
-SqueezeBar provides effortless 1-drop batch media compression, dual-zone quick/staged workflows, and per-file fine-tuning with zero telemetry and 100% on-device processing.
-
----
+Drop images, video, audio or PDFs to compress them instantly, or stage them and tune each file first. Processing is 100% on-device with zero telemetry.
 
 ## Features
 
-- **1-Drop Batch Optimization**: Instant Quick Drop or queue and customize files individually.
-- **Smart Target Sizes**: Compression presets for Discord (25MB/50MB), Email (10MB), or Custom limits.
-- **Full Quality & Format Controls**: Adjust quality, resolution scaling, framerate, and convert formats.
-- **Desktop Floating Drop Ball (macOS)**: Edge-docking drop zone for quick drag-and-drop.
-- **100% Local & Private**: On-device hardware-accelerated processing with zero telemetry.
+- **Quick drop and staged queue**: compress immediately, or queue files and set options per file.
+- **Target sizes**: 2, 10, 25, 50 MB, custom, or manual quality control.
+- **Formats**: images (HEIC, WebP, AVIF, JPEG), video (codec, frame rate, GIF export), audio (AAC), PDF (DPI, grayscale, metadata stripping).
+- **Floating DropBall**: edge-docked desktop drop target.
+- **Other inputs**: Finder Service, clipboard, watched folders.
+- **Before/after inspector** and saved-space history.
 
----
+## Build
 
-## Build from Source
-
-### macOS
-```bash
+```sh
 cd macOS
-./scripts/bundle_app.sh
-# Or create the DMG installer
-./scripts/create_dmg.sh
+./scripts/bundle_app.sh     # builds macOS/SqueezeBar.app
+./scripts/create_dmg.sh     # optional DMG installer
 ```
-
-### Windows
-```bash
-./windows/scripts/build_windows.sh
-```
-
----
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
+GPLv3. See [LICENSE](LICENSE).

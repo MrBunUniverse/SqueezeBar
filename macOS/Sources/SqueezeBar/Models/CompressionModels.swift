@@ -74,79 +74,6 @@ public enum DropBallAnimationStyle: String, Codable, Sendable, CaseIterable, Ide
     }
 }
 
-// MARK: - DropBall Glass Style (Templates)
-public enum DropBallGlassStyle: String, Codable, Sendable, CaseIterable, Identifiable {
-    case superClear = "Crystal Clear"
-    case balanced = "Balanced"
-    case opaque = "High Contrast"
-    
-    public var id: String { rawValue }
-    
-    public var icon: String {
-        switch self {
-        case .superClear: return "sparkles"
-        case .balanced: return "circle.lefthalf.filled"
-        case .opaque: return "circle.fill"
-        }
-    }
-    
-    public var description: String {
-        switch self {
-        case .superClear: return "100% transparent crystal glass with pure optical dispersion"
-        case .balanced: return "Frosted liquid glass with gentle ambient depth"
-        case .opaque: return "Deep obsidian dark glass for maximum contrast"
-        }
-    }
-    
-    public var clarity: Double {
-        switch self {
-        case .superClear: return 1.00    // 0% dark tint (100% transparent)
-        case .balanced: return 0.50      // 42% dark tint
-        case .opaque: return 0.05        // 80% solid dark tint
-        }
-    }
-    
-    public var frost: Double {
-        switch self {
-        case .superClear: return 0.00    // Pure crystalline clear
-        case .balanced: return 0.12      // Soft milky frosted diffusion
-        case .opaque: return 0.28        // Dense frosted body
-        }
-    }
-    
-    public var depth: Double {
-        switch self {
-        case .superClear: return 0.04    // Minimal gradient for maximum refraction
-        case .balanced: return 0.22      // Balanced 3D convex depth
-        case .opaque: return 0.40        // Smooth dark body
-        }
-    }
-    
-    public var sheen: Double {
-        switch self {
-        case .superClear: return 0.28    // Bright crystalline caustic glare
-        case .balanced: return 0.14      // Soft ambient top sheen
-        case .opaque: return 0.00        // No edge glare/sheen highlight
-        }
-    }
-    
-    public var rim: Double {
-        switch self {
-        case .superClear: return 0.35    // Razor-sharp luminous rim
-        case .balanced: return 0.24      // Natural subtle border
-        case .opaque: return 0.00        // No edge highlight border
-        }
-    }
-    
-    public var rimWidth: CGFloat {
-        switch self {
-        case .superClear: return 0.75
-        case .balanced: return 1.00
-        case .opaque: return 0.00        // Zero width border
-        }
-    }
-}
-
 // MARK: - Accent Color Theme
 public enum AccentColorTheme: String, Codable, Sendable, CaseIterable {
     case custom = "Custom"
@@ -160,22 +87,7 @@ public enum AccentColorTheme: String, Codable, Sendable, CaseIterable {
     case graphite = "Graphite"
 }
 
-// MARK: - Menu Bar Display Style (Supporter Customization)
-public enum MenuBarDisplayStyle: String, Codable, Sendable, CaseIterable {
-    case iconOnly = "Standard Icon"
-    case liveSavings = "Icon + Live Savings"
-    case minimalMonochrome = "Minimalist Dot"
-    
-    public var iconName: String {
-        switch self {
-        case .iconOnly: return "arrow.down.right.and.arrow.up.left"
-        case .liveSavings: return "chart.bar.xaxis"
-        case .minimalMonochrome: return "circle.inset.filled"
-        }
-    }
-}
-
-// MARK: - Completion Sound Theme (Supporter Customization)
+// MARK: - Completion Sound Theme
 public enum SoundEffectTheme: String, Codable, Sendable, CaseIterable {
     case defaultGlass = "Crystal Glass (Default)"
     case arcade8Bit = "8-Bit Arcade"
@@ -270,6 +182,7 @@ public enum ImageFormatPolicy: String, Codable, Sendable, CaseIterable {
     case heicModern = "Modern HEIC"
     case webpModern = "Modern WebP"
     case avifModern = "Modern AVIF"
+    case pngLossless = "PNG"
     case jpegStandard = "Web JPEG"
     
     public var description: String {
@@ -282,6 +195,8 @@ public enum ImageFormatPolicy: String, Codable, Sendable, CaseIterable {
             return "Modern WebP encoding for lightweight web deployment"
         case .avifModern:
             return "Next-generation AVIF encoding with high visual compression"
+        case .pngLossless:
+            return "Lossless PNG encoding with transparency support"
         case .jpegStandard:
             return "Standard JPEG format for universal web compatibility"
         }
@@ -407,14 +322,6 @@ public enum QualityPreset: String, Codable, Sendable, CaseIterable {
         case .visuallyLossless: return 0.90
         }
     }
-    
-    public var videoCRF: Double {
-        switch self {
-        case .maxCompression: return 30.0
-        case .balanced: return 26.0
-        case .visuallyLossless: return 20.0
-        }
-    }
 }
 
 // MARK: - Compression Project / Folder Model
@@ -497,10 +404,6 @@ public struct CompressionResult: Identifiable, Codable, Sendable {
         originalURL.lastPathComponent
     }
     
-    public var outputFileName: String {
-        outputURL.lastPathComponent
-    }
-    
     public var formattedOriginalSize: String {
         ByteCountFormatter.string(fromByteCount: originalSize, countStyle: .file)
     }
@@ -523,13 +426,19 @@ public struct CompressionJob: Identifiable, Sendable {
     public var statusText: String
     public var isFinished: Bool
     public var error: String?
+    public var isPaused: Bool = false
+    
+    /// Only long-running streaming encodes can be paused; image and PDF jobs finish too quickly to pause.
+    public var canPause: Bool {
+        mediaType == .video || mediaType == .audio
+    }
     
     public init(
         id: UUID = UUID(),
         fileURL: URL,
         mediaType: MediaType,
         progress: Double = 0.0,
-        statusText: String = "Queued",
+        statusText: String = String(localized: "Queued"),
         isFinished: Bool = false,
         error: String? = nil
     ) {
@@ -541,6 +450,14 @@ public struct CompressionJob: Identifiable, Sendable {
         self.isFinished = isFinished
         self.error = error
     }
+}
+
+/// A job that ended in an error; kept in memory so the user can see why a file didn't compress.
+public struct FailedJob: Identifiable, Sendable {
+    public let id = UUID()
+    public let fileName: String
+    public let message: String
+    public let date = Date()
 }
 
 // MARK: - Target Size Automation Mode

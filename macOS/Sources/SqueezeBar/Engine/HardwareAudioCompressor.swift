@@ -14,12 +14,12 @@ public struct HardwareAudioCompressor: Sendable {
         
         public var errorDescription: String? {
             switch self {
-            case .unreadableSource: return "Unable to open or read audio source file"
-            case .noAudioTrackFound: return "No audio track found in file"
-            case .cannotCreateReader: return "Failed to initialize AVAssetReader for audio"
-            case .cannotCreateWriter: return "Failed to initialize AVAssetWriter for audio"
-            case .encodingFailed(let msg): return "Audio compression failed: \(msg)"
-            case .cancelled: return "Audio compression cancelled"
+            case .unreadableSource: return String(localized: "Unable to open or read audio source file")
+            case .noAudioTrackFound: return String(localized: "No audio track found in file")
+            case .cannotCreateReader: return String(localized: "Failed to initialize AVAssetReader for audio")
+            case .cannotCreateWriter: return String(localized: "Failed to initialize AVAssetWriter for audio")
+            case .encodingFailed(let msg): return String(localized: "Audio compression failed: \(msg)")
+            case .cancelled: return String(localized: "Audio compression cancelled")
             }
         }
     }
@@ -35,6 +35,7 @@ public struct HardwareAudioCompressor: Sendable {
         from sourceURL: URL,
         to destinationURL: URL,
         config: CompressionConfiguration,
+        control: JobControl? = nil,
         progressHandler: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         // Ensure destination does not exist
@@ -132,6 +133,7 @@ public struct HardwareAudioCompressor: Sendable {
             readerOutput: readerAudioOutput,
             writerInput: writerAudioInput,
             totalDurationSeconds: totalDurationSeconds,
+            control: control,
             progressHandler: progressHandler
         )
         
@@ -154,6 +156,7 @@ private final class AudioEncodingContext: @unchecked Sendable {
     private let readerOutput: AVAssetReaderTrackOutput
     private let writerInput: AVAssetWriterInput
     private let totalDurationSeconds: Double
+    private let control: JobControl?
     private let progressHandler: (@Sendable (Double) -> Void)?
     
     init(
@@ -162,8 +165,10 @@ private final class AudioEncodingContext: @unchecked Sendable {
         readerOutput: AVAssetReaderTrackOutput,
         writerInput: AVAssetWriterInput,
         totalDurationSeconds: Double,
+        control: JobControl?,
         progressHandler: (@Sendable (Double) -> Void)?
     ) {
+        self.control = control
         self.reader = reader
         self.writer = writer
         self.readerOutput = readerOutput
@@ -180,6 +185,13 @@ private final class AudioEncodingContext: @unchecked Sendable {
                 guard let self = self else { return }
                 
                 while self.writerInput.isReadyForMoreMediaData {
+                    if let control = self.control, !control.checkpoint() {
+                        self.writerInput.markAsFinished()
+                        self.reader.cancelReading()
+                        self.writer.cancelWriting()
+                        continuation.resume(throwing: HardwareAudioCompressor.AudioCompressorError.cancelled)
+                        return
+                    }
                     if let sampleBuffer = self.readerOutput.copyNextSampleBuffer() {
                         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
                         let currentSec = CMTimeGetSeconds(timestamp)

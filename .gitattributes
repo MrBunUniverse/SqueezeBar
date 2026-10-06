@@ -2,4 +2,3 @@
 .agents/** linguist-vendored
 .agents/** linguist-documentation
 macOS/scripts/** linguist-vendored
-windows/scripts/** linguist-vendored

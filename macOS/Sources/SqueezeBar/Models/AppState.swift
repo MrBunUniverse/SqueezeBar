@@ -56,24 +56,29 @@ public final class AppState: ObservableObject {
         static let totalFilesProcessed = "squeezebar.totalFilesProcessed"
         static let accentTheme = "squeezebar.accentTheme"
         static let customAccentHex = "squeezebar.customAccentHex"
-        static let isProUser = "squeezebar.isProUser"
         static let customOutputFolder = "squeezebar.customOutputFolder"
         static let exportToSubfolder = "squeezebar.exportToSubfolder"
         static let subfolderName = "squeezebar.subfolderName"
         static let finderServiceEnabled = "squeezebar.finderServiceEnabled"
-        static let menuBarDisplayStyle = "squeezebar.menuBarDisplayStyle"
         static let soundTheme = "squeezebar.soundTheme"
         static let uiScale = "squeezebar.uiScale"
+        static let appTransparency = "squeezebar.appTransparency"
+        static let appGlassFrost = "squeezebar.appGlassFrost"
+        static let appGlassDepth = "squeezebar.appGlassDepth"
         static let floatingBallEnabled = "squeezebar.floatingBallEnabled"
-        static let dropBallAnimationStyle = "squeezebar.dropBallAnimationStyle"
-        static let dropBallGlassStyle = "squeezebar.dropBallGlassStyle"
-        static let dropBallFrost = "squeezebar.dropBallFrost"
-        static let dropBallClarity = "squeezebar.dropBallClarity"
-        static let dropBallDepth = "squeezebar.dropBallDepth"
-        static let dropBallSheen = "squeezebar.dropBallSheen"
-        static let dropBallRim = "squeezebar.dropBallRim"
     }
     
+    // MARK: - App Window Transparency
+    @Published public var appTransparency: Double {
+        didSet { UserDefaults.standard.set(appTransparency, forKey: Keys.appTransparency) }
+    }
+    @Published public var appGlassFrost: Double {
+        didSet { UserDefaults.standard.set(appGlassFrost, forKey: Keys.appGlassFrost) }
+    }
+    @Published public var appGlassDepth: Double {
+        didSet { UserDefaults.standard.set(appGlassDepth, forKey: Keys.appGlassDepth) }
+    }
+
     // MARK: - Desktop Floating Drop Ball
     @Published public var floatingBallEnabled: Bool {
         didSet {
@@ -84,46 +89,9 @@ public final class AppState: ObservableObject {
         }
     }
     
-    // MARK: - DropBall Animation Style (Calm / Standard / Exaggerated)
-    @Published public var dropBallAnimationStyle: DropBallAnimationStyle {
-        didSet {
-            UserDefaults.standard.set(dropBallAnimationStyle.rawValue, forKey: Keys.dropBallAnimationStyle)
-        }
-    }
-    
-    // MARK: - DropBall Glass Style Template (Crystal Clear / Balanced / High Contrast)
-    @Published public var dropBallGlassStyle: DropBallGlassStyle {
-        didSet {
-            UserDefaults.standard.set(dropBallGlassStyle.rawValue, forKey: Keys.dropBallGlassStyle)
-            self.dropBallClarity = dropBallGlassStyle.clarity
-            self.dropBallFrost = dropBallGlassStyle.frost
-            self.dropBallDepth = dropBallGlassStyle.depth
-            self.dropBallSheen = dropBallGlassStyle.sheen
-            self.dropBallRim = dropBallGlassStyle.rim
-        }
-    }
-    
-    // MARK: - DropBall Liquid Glass Shaders Configuration
-    @Published public var dropBallClarity: Double {
-        didSet { UserDefaults.standard.set(dropBallClarity, forKey: Keys.dropBallClarity) }
-    }
-    @Published public var dropBallFrost: Double {
-        didSet { UserDefaults.standard.set(dropBallFrost, forKey: Keys.dropBallFrost) }
-    }
-    @Published public var dropBallDepth: Double {
-        didSet { UserDefaults.standard.set(dropBallDepth, forKey: Keys.dropBallDepth) }
-    }
-    @Published public var dropBallSheen: Double {
-        didSet { UserDefaults.standard.set(dropBallSheen, forKey: Keys.dropBallSheen) }
-    }
-    @Published public var dropBallRim: Double {
-        didSet { UserDefaults.standard.set(dropBallRim, forKey: Keys.dropBallRim) }
-    }
-    
-    public func resetDropBallShadersToDefault() {
-        dropBallGlassStyle = .superClear
-    }
-    
+    // Fixed DropBall animation preset; the glass look is drawn directly in FloatingBallView.
+    public let dropBallAnimationStyle: DropBallAnimationStyle = .exaggerated
+
     // MARK: - UI Scaling / Display Density Option
     @Published public var uiScale: UIScaleOption {
         didSet {
@@ -135,21 +103,7 @@ public final class AppState: ObservableObject {
         }
     }
     
-    // MARK: - Pro / Basic Tier State
-    @Published public var isProUser: Bool {
-        didSet {
-            UserDefaults.standard.set(isProUser, forKey: Keys.isProUser)
-        }
-    }
-    
-    // MARK: - Menu Bar Display Style (Supporter Perk)
-    @Published public var menuBarDisplayStyle: MenuBarDisplayStyle {
-        didSet {
-            UserDefaults.standard.set(menuBarDisplayStyle.rawValue, forKey: Keys.menuBarDisplayStyle)
-        }
-    }
-    
-    // MARK: - Completion Sound Theme (Supporter Perk)
+    // MARK: - Completion Sound Theme
     @Published public var soundTheme: SoundEffectTheme {
         didSet {
             UserDefaults.standard.set(soundTheme.rawValue, forKey: Keys.soundTheme)
@@ -213,14 +167,6 @@ public final class AppState: ObservableObject {
         let g = Double((rgbValue & 0x00FF00) >> 8) / 255.0
         let b = Double(rgbValue & 0x0000FF) / 255.0
         return Color(red: r, green: g, blue: b)
-    }
-    
-    public static func hexFromColor(_ color: Color) -> String {
-        let nsColor = NSColor(color).usingColorSpace(.sRGB) ?? NSColor.blue
-        let r = Int(round(nsColor.redComponent * 255))
-        let g = Int(round(nsColor.greenComponent * 255))
-        let b = Int(round(nsColor.blueComponent * 255))
-        return String(format: "%02X%02X%02X", r, g, b)
     }
     
     // MARK: - Image Settings
@@ -583,7 +529,6 @@ public final class AppState: ObservableObject {
     @Published public var isPinned: Bool = false
     @Published public var isDetached: Bool = false
     @Published public var inspectedResult: CompressionResult? = nil
-    @Published public var supporterBannerNotice: String? = nil
     
     // MARK: - Runtime State
     @Published public var isProcessing: Bool = false
@@ -591,20 +536,14 @@ public final class AppState: ObservableObject {
     @Published public var activeJobs: [CompressionJob] = []
     @Published public var recentResults: [CompressionResult] = []
     @Published public var showSuccessBadge: Bool = false
+    @Published public var showFailureBadge: Bool = false
+    @Published public var failedJobs: [FailedJob] = []
     
     // MARK: - Cumulative Stats
     @Published public var totalBytesSaved: Int64
     @Published public var totalOriginalBytes: Int64
     @Published public var totalFilesProcessed: Int
     
-    public var overallPercentageSaved: Double {
-        guard totalOriginalBytes > 0 else { return 0.0 }
-        return (Double(totalBytesSaved) / Double(totalOriginalBytes)) * 100.0
-    }
-    
-    public var formattedTotalSaved: String {
-        ByteCountFormatter.string(fromByteCount: totalBytesSaved, countStyle: .file)
-    }
     
     // MARK: - Initialization
     private init() {
@@ -674,9 +613,6 @@ public final class AppState: ObservableObject {
         let savedTheme = UserDefaults.standard.string(forKey: Keys.accentTheme) ?? ""
         self.accentTheme = AccentColorTheme(rawValue: savedTheme) ?? .blue
         
-        let savedBarStyle = UserDefaults.standard.string(forKey: Keys.menuBarDisplayStyle) ?? ""
-        self.menuBarDisplayStyle = MenuBarDisplayStyle(rawValue: savedBarStyle) ?? .iconOnly
-        
         let savedSoundTheme = UserDefaults.standard.string(forKey: Keys.soundTheme) ?? ""
         self.soundTheme = SoundEffectTheme(rawValue: savedSoundTheme) ?? .defaultGlass
         
@@ -696,33 +632,16 @@ public final class AppState: ObservableObject {
             self.floatingBallEnabled = UserDefaults.standard.bool(forKey: Keys.floatingBallEnabled)
         }
         
-        if let rawStyle = UserDefaults.standard.string(forKey: Keys.dropBallAnimationStyle),
-           let style = DropBallAnimationStyle(rawValue: rawStyle) {
-            self.dropBallAnimationStyle = style
-        } else {
-            self.dropBallAnimationStyle = .exaggerated
-        }
-        
-        let initialGlassStyle: DropBallGlassStyle
-        if let rawGlassStyle = UserDefaults.standard.string(forKey: Keys.dropBallGlassStyle),
-           let glassStyle = DropBallGlassStyle(rawValue: rawGlassStyle) {
-            initialGlassStyle = glassStyle
-        } else {
-            initialGlassStyle = .superClear
-        }
-        self.dropBallGlassStyle = initialGlassStyle
-        self.dropBallClarity = initialGlassStyle.clarity
-        self.dropBallFrost = initialGlassStyle.frost
-        self.dropBallDepth = initialGlassStyle.depth
-        self.dropBallSheen = initialGlassStyle.sheen
-        self.dropBallRim = initialGlassStyle.rim
-        
         if let rawScale = UserDefaults.standard.string(forKey: Keys.uiScale),
            let scale = UIScaleOption(rawValue: rawScale) {
             self.uiScale = scale
         } else {
             self.uiScale = .medium
         }
+
+        self.appTransparency = min(max(UserDefaults.standard.object(forKey: Keys.appTransparency) as? Double ?? 0, 0), 1)
+        self.appGlassFrost = min(max(UserDefaults.standard.object(forKey: Keys.appGlassFrost) as? Double ?? 0.12, 0), 1)
+        self.appGlassDepth = min(max(UserDefaults.standard.object(forKey: Keys.appGlassDepth) as? Double ?? 0.65, 0), 1)
         
         if UserDefaults.standard.object(forKey: Keys.hapticEnabled) == nil {
             self.hapticEnabled = true
@@ -736,11 +655,8 @@ public final class AppState: ObservableObject {
             self.soundEnabled = UserDefaults.standard.bool(forKey: Keys.soundEnabled)
         }
         
-        if UserDefaults.standard.object(forKey: Keys.isProUser) == nil {
-            self.isProUser = true
-        } else {
-            self.isProUser = UserDefaults.standard.bool(forKey: Keys.isProUser)
-        }
+        // Every feature is free; drop the flag left over from the old supporter tier.
+        UserDefaults.standard.removeObject(forKey: "squeezebar.isProUser")
         
         self.totalBytesSaved = Int64(UserDefaults.standard.integer(forKey: Keys.totalBytesSaved))
         self.totalOriginalBytes = Int64(UserDefaults.standard.integer(forKey: Keys.totalOriginalBytes))
@@ -946,21 +862,28 @@ public final class AppState: ObservableObject {
     public func updateJob(id: UUID, progress: Double, statusText: String) {
         if let idx = activeJobs.firstIndex(where: { $0.id == id }) {
             activeJobs[idx].progress = progress
-            activeJobs[idx].statusText = statusText
+            if !activeJobs[idx].isPaused {
+                activeJobs[idx].statusText = statusText
+            }
             updateProcessingState()
         }
     }
     
     public func finishJob(id: UUID, result: CompressionResult?, error: String?) {
+        JobControlRegistry.shared.remove(id)
         if let idx = activeJobs.firstIndex(where: { $0.id == id }) {
             activeJobs[idx].isFinished = true
+            activeJobs[idx].isPaused = false
             activeJobs[idx].error = error
             if let result = result {
-                activeJobs[idx].statusText = "Saved \(result.formattedSaved) (-\(Int(result.percentSaved))%)"
+                activeJobs[idx].statusText = String(localized: "Saved \(result.formattedSaved) (-\(Int(result.percentSaved))%)")
                 activeJobs[idx].progress = 1.0
                 recordResult(result)
             } else {
-                activeJobs[idx].statusText = error ?? "Failed"
+                activeJobs[idx].statusText = error ?? String(localized: "Failed")
+                if let error, error != "Cancelled" {
+                    recordFailure(fileName: activeJobs[idx].fileURL.lastPathComponent, message: error)
+                }
             }
         }
         
@@ -973,11 +896,51 @@ public final class AppState: ObservableObject {
         updateProcessingState()
     }
     
+    // MARK: - Pause / Resume
+    public var hasPausableJobs: Bool {
+        activeJobs.contains { !$0.isFinished && $0.canPause }
+    }
+    
+    public var areAllPausableJobsPaused: Bool {
+        let pausable = activeJobs.filter { !$0.isFinished && $0.canPause }
+        return !pausable.isEmpty && pausable.allSatisfy { $0.isPaused }
+    }
+    
+    public func pauseJob(id: UUID) {
+        guard let idx = activeJobs.firstIndex(where: { $0.id == id }),
+              activeJobs[idx].canPause, !activeJobs[idx].isFinished else { return }
+        JobControlRegistry.shared.control(for: id).pause()
+        activeJobs[idx].isPaused = true
+        activeJobs[idx].statusText = String(localized: "Paused")
+    }
+    
+    public func resumeJob(id: UUID) {
+        guard let idx = activeJobs.firstIndex(where: { $0.id == id }), activeJobs[idx].isPaused else { return }
+        JobControlRegistry.shared.control(for: id).resume()
+        activeJobs[idx].isPaused = false
+        activeJobs[idx].statusText = String(localized: "Resuming...")
+    }
+    
+    public func pauseAllJobs() {
+        for job in activeJobs where job.canPause && !job.isFinished && !job.isPaused {
+            pauseJob(id: job.id)
+        }
+    }
+    
+    public func resumeAllJobs() {
+        for job in activeJobs where job.isPaused {
+            resumeJob(id: job.id)
+        }
+    }
+    
     public func cancelJob(id: UUID) {
+        // Stop the encode immediately instead of waiting for the engine actor.
+        JobControlRegistry.shared.control(for: id).cancel()
         if let idx = activeJobs.firstIndex(where: { $0.id == id }) {
+            activeJobs[idx].isPaused = false
             activeJobs[idx].isFinished = true
             activeJobs[idx].error = "Cancelled"
-            activeJobs[idx].statusText = "Cancelled"
+            activeJobs[idx].statusText = String(localized: "Cancelled")
         }
         updateProcessingState()
         
@@ -993,11 +956,15 @@ public final class AppState: ObservableObject {
     }
     
     public func cancelAllJobs() {
+        for job in activeJobs where !job.isFinished {
+            JobControlRegistry.shared.control(for: job.id).cancel()
+        }
         for idx in activeJobs.indices {
             if !activeJobs[idx].isFinished {
+                activeJobs[idx].isPaused = false
                 activeJobs[idx].isFinished = true
                 activeJobs[idx].error = "Cancelled"
-                activeJobs[idx].statusText = "Cancelled"
+                activeJobs[idx].statusText = String(localized: "Cancelled")
             }
         }
         updateProcessingState()
@@ -1022,6 +989,36 @@ public final class AppState: ObservableObject {
             let total = unfinished.reduce(0.0) { $0 + $1.progress }
             overallProgress = total / Double(unfinished.count)
         }
+    }
+    
+    /// Keeps failed files visible after their job row disappears, and surfaces the error on the DropBall.
+    private func recordFailure(fileName: String, message: String) {
+        failedJobs.insert(FailedJob(fileName: fileName, message: message), at: 0)
+        if failedJobs.count > 5 {
+            failedJobs.removeLast()
+        }
+        
+        showFailureBadge = true
+        showSuccessBadge = false
+        if hapticEnabled {
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
+        }
+        // Pop the ball out of its tucked state so the error is visible, then let it tuck away again.
+        LiquidBallModel.shared.revealFromTuck()
+        LiquidBallModel.shared.scheduleAutoTuck(afterSeconds: 3.5)
+        
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            self.showFailureBadge = false
+        }
+    }
+    
+    public func dismissFailure(id: UUID) {
+        failedJobs.removeAll { $0.id == id }
+    }
+    
+    public func clearFailures() {
+        failedJobs.removeAll()
     }
     
     public func triggerSuccessBadge() {

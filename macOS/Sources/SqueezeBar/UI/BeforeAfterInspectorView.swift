@@ -13,7 +13,6 @@ public struct BeforeAfterInspectorView: View {
     @State private var originalImage: NSImage?
     @State private var compressedImage: NSImage?
     @State private var inspectorMode: InspectorMode = .split
-    @State private var showOnlyAfter: Bool = false
     
     // Synchronized Video Playback Engine
     @StateObject private var videoEngine = SynchronizedVideoEngine()
@@ -29,6 +28,13 @@ public struct BeforeAfterInspectorView: View {
     enum InspectorMode: String, CaseIterable {
         case split = "Split Slider"
         case sideBySide = "Side by Side"
+        
+        var displayName: String {
+            switch self {
+            case .split: return String(localized: "Split Slider")
+            case .sideBySide: return String(localized: "Side by Side")
+            }
+        }
     }
     
     public init(result: CompressionResult, onClose: @escaping () -> Void) {
@@ -72,7 +78,22 @@ public struct BeforeAfterInspectorView: View {
             bottomBar
         }
         .frame(minWidth: 680, idealWidth: 860, minHeight: 520, idealHeight: 640)
-        .background(VisualEffectView(material: .hudWindow, blendingMode: .withinWindow))
+        .background {
+            ZStack {
+                Rectangle()
+                    .fill(Color(nsColor: .windowBackgroundColor).opacity(1 - state.appTransparency))
+                    .allowsHitTesting(false)
+                Rectangle()
+                    .fill(Color.black.opacity(0.35 * state.appTransparency))
+                    .allowsHitTesting(false)
+                if #available(macOS 26.0, *) {
+                    Color.clear
+                        .glassEffect(.clear.tint(Color.black.opacity(0.3)), in: Rectangle())
+                        .opacity(state.appTransparency)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
         .task {
             await loadMedia()
         }
@@ -80,6 +101,7 @@ public struct BeforeAfterInspectorView: View {
             videoEngine.cleanup()
             audioEngine.cleanup()
         }
+        .font(.system(.body, design: .rounded))
     }
     
     // Total effective pan
@@ -99,23 +121,23 @@ public struct BeforeAfterInspectorView: View {
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.fileName)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .lineLimit(1)
                 
                 HStack(spacing: 6) {
                     Text(result.formattedOriginalSize)
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, design: .rounded))
                         .foregroundColor(.secondary)
                         .strikethrough()
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 8))
+                        .font(.system(size: 8, design: .rounded))
                         .foregroundColor(.secondary)
                     Text(result.formattedCompressedSize)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(.primary)
                     
                     Text("Saved \(result.formattedSaved)")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
                         .foregroundColor(.green)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
@@ -134,7 +156,7 @@ public struct BeforeAfterInspectorView: View {
                         }
                     } label: {
                         Text("Original (Before)")
-                            .font(.system(size: 10, weight: audioEngine.activeSource == .original ? .semibold : .medium))
+                            .font(.system(size: 10, weight: audioEngine.activeSource == .original ? .semibold : .medium, design: .rounded))
                             .foregroundColor(audioEngine.activeSource == .original ? .white : .secondary)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4.5)
@@ -151,7 +173,7 @@ public struct BeforeAfterInspectorView: View {
                         }
                     } label: {
                         Text("Squeezed (After)")
-                            .font(.system(size: 10, weight: audioEngine.activeSource == .compressed ? .semibold : .medium))
+                            .font(.system(size: 10, weight: audioEngine.activeSource == .compressed ? .semibold : .medium, design: .rounded))
                             .foregroundColor(audioEngine.activeSource == .compressed ? .white : .secondary)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4.5)
@@ -178,14 +200,14 @@ public struct BeforeAfterInspectorView: View {
                         }
                     } label: {
                         Image(systemName: "minus.magnifyingglass")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11, design: .rounded))
                             .padding(4)
                     }
                     .buttonStyle(.plain)
                     .disabled(zoomScale <= 1.0)
                     
                     Text(String(format: "%.0f%%", zoomScale * 100))
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                         .frame(width: 38)
                         .onTapGesture(count: 2) {
                             resetZoom()
@@ -197,7 +219,7 @@ public struct BeforeAfterInspectorView: View {
                         }
                     } label: {
                         Image(systemName: "plus.magnifyingglass")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11, design: .rounded))
                             .padding(4)
                     }
                     .buttonStyle(.plain)
@@ -208,7 +230,7 @@ public struct BeforeAfterInspectorView: View {
                             resetZoom()
                         } label: {
                             Text("Reset")
-                                .font(.system(size: 9, weight: .medium))
+                                .font(.system(size: 9, weight: .medium, design: .rounded))
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
                                 .background(Capsule().fill(Color.white.opacity(0.12)))
@@ -229,8 +251,8 @@ public struct BeforeAfterInspectorView: View {
                                 inspectorMode = mode
                             }
                         } label: {
-                            Text(mode.rawValue)
-                                .font(.system(size: 10, weight: inspectorMode == mode ? .semibold : .medium))
+                            Text(mode.displayName)
+                                .font(.system(size: 10, weight: inspectorMode == mode ? .semibold : .medium, design: .rounded))
                                 .foregroundColor(inspectorMode == mode ? .white : .secondary)
                                 .padding(.horizontal, 9)
                                 .padding(.vertical, 4)
@@ -284,7 +306,7 @@ public struct BeforeAfterInspectorView: View {
                     )
                     .frame(width: 260, height: 260)
                     .scaleEffect(audioEngine.isPlaying ? 1.08 : 1.0)
-                    .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: audioEngine.isPlaying)
+                    .animation(audioEngine.isPlaying ? .easeInOut(duration: 1.5).repeatForever(autoreverses: true) : .easeOut(duration: 0.3), value: audioEngine.isPlaying)
                 
                 // Frosted Glass Circle with Specular Border
                 Circle()
@@ -306,13 +328,13 @@ public struct BeforeAfterInspectorView: View {
                 // Centered Waveform Icon and Badge
                 VStack(spacing: 8) {
                     Image(systemName: "waveform")
-                        .font(.system(size: 46, weight: .semibold))
+                        .font(.system(size: 46, weight: .semibold, design: .rounded))
                         .foregroundColor(audioEngine.activeSource == .original ? .white.opacity(0.8) : state.accentColor)
                         .scaleEffect(audioEngine.isPlaying ? 1.06 : 1.0)
                         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: audioEngine.isPlaying)
                     
                     Text(audioEngine.activeSource == .original ? "ORIGINAL LOSSLESS" : "SQUEEZED AUDIO")
-                        .font(.system(size: 9, weight: .bold, design: .serif))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
                         .foregroundColor(audioEngine.activeSource == .original ? .secondary : state.accentColor)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2.5)
@@ -323,17 +345,17 @@ public struct BeforeAfterInspectorView: View {
             // Track Info & Telemetry
             VStack(spacing: 10) {
                 Text(result.fileName)
-                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                 
                 HStack(spacing: 14) {
                     HStack(spacing: 4) {
                         Image(systemName: "music.note")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10, design: .rounded))
                             .foregroundColor(.secondary)
                         Text(result.originalURL.pathExtension.uppercased() + " → " + result.outputURL.pathExtension.uppercased())
-                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
                             .foregroundColor(.secondary)
                     }
                     
@@ -342,7 +364,7 @@ public struct BeforeAfterInspectorView: View {
                     
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10, design: .rounded))
                             .foregroundColor(.green)
                         Text("Saved \(result.formattedSaved) (-\(Int(result.percentSaved))%)")
                             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
@@ -389,13 +411,13 @@ public struct BeforeAfterInspectorView: View {
                 // Elapsed & Remaining Time
                 HStack {
                     Text(audioEngine.formattedCurrentTime)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                     
                     Spacer()
                     
                     Text(audioEngine.formattedRemainingTime)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                 }
                 
@@ -406,7 +428,7 @@ public struct BeforeAfterInspectorView: View {
                         audioEngine.seek(to: max(0, audioEngine.currentTimeSeconds - 15))
                     } label: {
                         Image(systemName: "gobackward.15")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 18, weight: .medium, design: .rounded))
                             .foregroundColor(.primary.opacity(0.85))
                     }
                     .buttonStyle(.plain)
@@ -416,7 +438,7 @@ public struct BeforeAfterInspectorView: View {
                         audioEngine.togglePlayPause()
                     } label: {
                         Image(systemName: audioEngine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 48, weight: .regular))
+                            .font(.system(size: 48, weight: .regular, design: .rounded))
                             .foregroundColor(state.accentColor)
                             .shadow(color: state.accentColor.opacity(0.4), radius: 8, y: 2)
                     }
@@ -427,7 +449,7 @@ public struct BeforeAfterInspectorView: View {
                         audioEngine.seek(to: min(audioEngine.durationSeconds, audioEngine.currentTimeSeconds + 15))
                     } label: {
                         Image(systemName: "goforward.15")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 18, weight: .medium, design: .rounded))
                             .foregroundColor(.primary.opacity(0.85))
                     }
                     .buttonStyle(.plain)
@@ -531,7 +553,7 @@ public struct BeforeAfterInspectorView: View {
                 .shadow(color: .black.opacity(0.5), radius: 4)
                 .overlay(
                     Image(systemName: "arrow.left.and.right")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
                         .foregroundColor(.black)
                 )
                 .position(x: lineX, y: height / 2)
@@ -562,7 +584,7 @@ public struct BeforeAfterInspectorView: View {
                 Spacer()
                 HStack {
                     Text("ORIGINAL")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(Color.black.opacity(0.65)))
@@ -572,7 +594,7 @@ public struct BeforeAfterInspectorView: View {
                     Spacer()
                     
                     Text("OPTIMIZED")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(state.accentColor.opacity(0.85)))
@@ -663,7 +685,7 @@ public struct BeforeAfterInspectorView: View {
                 }
                 
                 Text("ORIGINAL")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(Capsule().fill(Color.black.opacity(0.75)))
@@ -692,7 +714,7 @@ public struct BeforeAfterInspectorView: View {
                 }
                 
                 Text("OPTIMIZED")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(Capsule().fill(Color.blue.opacity(0.85)))
@@ -714,7 +736,7 @@ public struct BeforeAfterInspectorView: View {
                 videoEngine.togglePlayPause()
             } label: {
                 Image(systemName: videoEngine.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
                     .frame(width: 24, height: 24)
                     .background(Capsule().fill(Color.white.opacity(0.12)))
             }
@@ -722,7 +744,7 @@ public struct BeforeAfterInspectorView: View {
             .keyboardShortcut(.space, modifiers: [])
             
             Text(videoEngine.formattedCurrentTime)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundColor(.secondary)
                 .frame(width: 40, alignment: .leading)
             
@@ -739,7 +761,7 @@ public struct BeforeAfterInspectorView: View {
             .accentColor(.blue)
             
             Text(videoEngine.formattedDuration)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundColor(.secondary)
                 .frame(width: 40, alignment: .trailing)
             
@@ -748,7 +770,7 @@ public struct BeforeAfterInspectorView: View {
                 videoEngine.isLooping.toggle()
             } label: {
                 Image(systemName: "repeat")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundColor(videoEngine.isLooping ? .blue : .secondary)
                     .padding(4)
                     .background(Capsule().fill(videoEngine.isLooping ? Color.blue.opacity(0.15) : Color.clear))
@@ -766,7 +788,7 @@ public struct BeforeAfterInspectorView: View {
                     videoEngine.isMuted.toggle()
                 } label: {
                     Image(systemName: videoEngine.isMuted || videoEngine.volume == 0 ? "speaker.slash.fill" : (videoEngine.volume < 0.5 ? "speaker.1.fill" : "speaker.3.fill"))
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(videoEngine.isMuted ? .red.opacity(0.8) : .secondary)
                 }
                 .buttonStyle(.plain)
@@ -799,31 +821,31 @@ public struct BeforeAfterInspectorView: View {
             if result.mediaType == .audio {
                 HStack(spacing: 6) {
                     Text("Audio Studio")
-                        .font(.system(size: 10, weight: .semibold, design: .serif))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(.primary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
                         .background(Capsule().fill(state.accentColor.opacity(0.18)))
                     
                     Text("Transparent Quality • AAC / M4A • 48 kHz")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9, design: .rounded))
                         .foregroundColor(.secondary)
                 }
             } else if let origDim = result.originalDimensions, let outDim = result.outputDimensions {
                 HStack(spacing: 6) {
                     Text(origDim)
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, design: .rounded))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
                         .background(Capsule().fill(Color.white.opacity(0.06)))
                     
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 8))
+                        .font(.system(size: 8, design: .rounded))
                         .foregroundColor(.secondary)
                     
                     Text(outDim)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(.primary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
@@ -833,7 +855,7 @@ public struct BeforeAfterInspectorView: View {
             
             if result.mediaType != .audio {
                 Text("Pinch / Scroll to zoom • Drag to pan • Drag center handle to split")
-                    .font(.system(size: 9))
+                    .font(.system(size: 9, design: .rounded))
                     .foregroundColor(.secondary.opacity(0.8))
                     .padding(.leading, 4)
             }
@@ -845,9 +867,9 @@ public struct BeforeAfterInspectorView: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "folder")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, design: .rounded))
                     Text("Reveal in Finder")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -862,9 +884,9 @@ public struct BeforeAfterInspectorView: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, design: .rounded))
                     Text("Copy File")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                 }
                 .foregroundColor(.white)
                 .padding(.horizontal, 8)
@@ -1063,7 +1085,6 @@ private final class SynchronizedVideoEngine: ObservableObject {
     }
     
     private var timeObserverToken: Any?
-    private var endObserverToken: Any?
     
     var formattedCurrentTime: String {
         formatTime(currentTimeSeconds)
@@ -1436,8 +1457,8 @@ public final class InspectorWindowController: NSObject, NSWindowDelegate {
         win.isMovableByWindowBackground = false
         
         win.level = .floating
-        win.backgroundColor = .windowBackgroundColor
-        win.isOpaque = true
+        win.backgroundColor = .clear
+        win.isOpaque = false
         win.hasShadow = true
         win.setContentSize(NSSize(width: 840, height: 600))
         win.center()
@@ -1452,4 +1473,3 @@ public final class InspectorWindowController: NSObject, NSWindowDelegate {
         window = nil
     }
 }
-

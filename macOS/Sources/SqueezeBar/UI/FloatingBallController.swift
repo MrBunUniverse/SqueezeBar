@@ -122,43 +122,45 @@ public final class FloatingBallHostingView: NSHostingView<FloatingBallView> {
     private var initialWindowOrigin: CGPoint = .zero
     private var lastMouseLocation: CGPoint = .zero
     private var isDraggingWindow = false
-    private var trackingArea: NSTrackingArea?
-    
-    public override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let existing = trackingArea {
-            removeTrackingArea(existing)
+
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        let model = LiquidBallModel.shared
+        let state = AppState.shared
+        let isTucked = model.isTucked && !model.isHovered && !state.isProcessing && !model.isMoving
+        let hoverScale: CGFloat
+        let popoutOffset: CGFloat
+        switch state.dropBallAnimationStyle {
+        case .calm:
+            hoverScale = 1.04
+            popoutOffset = 10
+        case .standard:
+            hoverScale = 1.08
+            popoutOffset = 16
+        case .exaggerated:
+            hoverScale = 1.15
+            popoutOffset = 22
         }
-        
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
+
+        let offset = model.isMoving ? 0 : (isTucked ? FloatingBallController.tuckedOffset : -popoutOffset) * (model.dockEdge == .right ? 1 : -1)
+        let scaleX = (isTucked ? FloatingBallController.tuckedScaleX : (model.isHovered ? hoverScale : 1)) * model.scaleX
+        let scaleY = (isTucked ? 1.06 : (model.isHovered ? hoverScale : 1)) * model.scaleY
+        let localPoint = convert(point, from: superview)
+        let center = CGPoint(x: FloatingBallController.panelSize / 2 + offset * scaleX, y: FloatingBallController.panelSize / 2)
+        let unscaledPoint = CGPoint(
+            x: center.x + (localPoint.x - center.x) / scaleX,
+            y: center.y + (localPoint.y - center.y) / scaleY
         )
-        addTrackingArea(area)
-        self.trackingArea = area
-    }
-    
-    public override func mouseEntered(with event: NSEvent) {
-        Task { @MainActor in
-            LiquidBallModel.shared.isHovered = true
-            LiquidBallModel.shared.revealFromTuck()
+        let ballRect = CGRect(
+            x: center.x - FloatingBallController.orbSize / 2,
+            y: center.y - FloatingBallController.orbSize / 2,
+            width: FloatingBallController.orbSize,
+            height: FloatingBallController.orbSize
+        )
+        let shape = DockedBallShape(tuckProgress: isTucked ? 1 : 0, isRightEdge: model.dockEdge == .right)
+        guard shape.path(in: ballRect).contains(unscaledPoint) else {
+            return nil
         }
-    }
-    
-    public override func mouseMoved(with event: NSEvent) {
-        Task { @MainActor in
-            LiquidBallModel.shared.isHovered = true
-            LiquidBallModel.shared.revealFromTuck()
-        }
-    }
-    
-    public override func mouseExited(with event: NSEvent) {
-        Task { @MainActor in
-            LiquidBallModel.shared.isHovered = false
-            LiquidBallModel.shared.scheduleAutoTuck(afterSeconds: 1.8)
-        }
+        return super.hitTest(point)
     }
     
     public override func mouseDown(with event: NSEvent) {
@@ -218,9 +220,13 @@ public final class FloatingBallHostingView: NSHostingView<FloatingBallView> {
 @MainActor
 public final class FloatingBallController: NSObject, NSWindowDelegate {
     public static let shared = FloatingBallController()
+    static let panelSize: CGFloat = 160
+    static let orbSize: CGFloat = 58
+    static let tuckedScaleX: CGFloat = 0.68
+    static let tuckedOffset: CGFloat = (orbSize / 2) * (1 / tuckedScaleX - 1)
     
     private var ballPanel: NSPanel?
-    private let ballSize: CGFloat = 160
+    private var ballSize: CGFloat { Self.panelSize }
     private var snapTimer: Timer?
     
     private struct Keys {
@@ -231,15 +237,6 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
     
     public override init() {
         super.init()
-    }
-    
-    public var currentPanelOrigin: CGPoint? {
-        return ballPanel?.frame.origin
-    }
-    
-    public func setPanelOrigin(_ origin: CGPoint) {
-        guard let panel = ballPanel else { return }
-        panel.setFrameOrigin(origin)
     }
     
     public func saveCurrentPosition() {
@@ -262,10 +259,8 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
         let dockEdge: LiquidBallModel.DockEdge = (ballCenter.x < visibleFrame.midX) ? .left : .right
         LiquidBallModel.shared.dockEdge = dockEdge
         
-        // In 160x160 canvas: 58px orb is centered at x=80, spanning [51, 109].
-        // Left dock anchors left orb edge (51) to screen minX: targetX = minX - 51
-        // Right dock anchors right orb edge (109) to screen maxX: targetX = maxX - 109
-        let targetX: CGFloat = (dockEdge == .left) ? visibleFrame.minX - 51 : visibleFrame.maxX - 109
+        let orbInset = (ballSize - Self.orbSize) / 2
+        let targetX: CGFloat = (dockEdge == .left) ? visibleFrame.minX - orbInset : visibleFrame.maxX - ballSize + orbInset
         let targetY: CGFloat = max(visibleFrame.minY + 20, min(visibleFrame.maxY - ballSize - 20, currentOrigin.y))
         let targetOrigin = CGPoint(x: targetX, y: targetY)
         
@@ -349,7 +344,7 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.title = "SqueezeBar Floating Basket"
+        panel.title = String(localized: "SqueezeBar DropBall")
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -391,7 +386,8 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
         let dockEdge = LiquidBallModel.DockEdge(rawValue: rawEdge) ?? .right
         LiquidBallModel.shared.dockEdge = dockEdge
         
-        let initialX: CGFloat = (dockEdge == .left) ? visibleFrame.minX - 51 : visibleFrame.maxX - 109
+        let orbInset = (ballSize - Self.orbSize) / 2
+        let initialX: CGFloat = (dockEdge == .left) ? visibleFrame.minX - orbInset : visibleFrame.maxX - ballSize + orbInset
         
         return NSRect(x: initialX, y: initialY, width: ballSize, height: ballSize)
     }

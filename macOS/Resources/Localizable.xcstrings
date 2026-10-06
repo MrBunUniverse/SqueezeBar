@@ -1,0 +1,642 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+      "shouldTranslate" : false
+    },
+    "#" : {
+      "shouldTranslate" : false
+    },
+    "%@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$@)"
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "%@ Accent" : {
+
+    },
+    "%@ Settings" : {
+
+    },
+    "%@.mp4,  %@.mp4 ..." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@.mp4,  %2$@.mp4 ..."
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "%lld DPI" : {
+
+    },
+    "%lld MB" : {
+
+    },
+    "%lld percent" : {
+
+    },
+    "%lld%%" : {
+      "shouldTranslate" : false
+    },
+    "%lld%% Q" : {
+      "comment" : "Quality percentage, abbreviated"
+    },
+    "%lld%% Scale" : {
+
+    },
+    "%lld%% quality" : {
+
+    },
+    "%lld%% transparency" : {
+
+    },
+    "%lld%% · %lld%% size" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld%% · %2$lld%% size"
+          }
+        }
+      }
+    },
+    "%lldMB Limit" : {
+
+    },
+    "(%lld selected)" : {
+
+    },
+    "(%lld)" : {
+
+    },
+    "(e.g. ./Squeezed/)" : {
+
+    },
+    "007AFF" : {
+      "shouldTranslate" : false
+    },
+    "Activity" : {
+
+    },
+    "Add Files" : {
+
+    },
+    "Add files" : {
+
+    },
+    "Allows smart downscaling + bitrate reduction" : {
+
+    },
+    "App & Theme Settings" : {
+
+    },
+    "App Transparency" : {
+
+    },
+    "App transparency" : {
+
+    },
+    "Appearance" : {
+
+    },
+    "Audio" : {
+
+    },
+    "Audio Bitrate" : {
+
+    },
+    "Auto-Squeeze Watch Folder" : {
+
+    },
+    "Automatic Subfolder" : {
+
+    },
+    "Automatic at %@. Choose Manual to adjust %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Automatic at %1$@. Choose Manual to adjust %2$@."
+          }
+        }
+      }
+    },
+    "BETA" : {
+
+    },
+    "Batch Format Rename (%lld files)" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Cancel %@" : {
+
+    },
+    "Cancel All" : {
+
+    },
+    "Cancel All Compression" : {
+
+    },
+    "Cancel running compression tasks" : {
+
+    },
+    "Cancel this compression task" : {
+
+    },
+    "Cancelled" : {
+
+    },
+    "Change Color" : {
+
+    },
+    "Change Folder..." : {
+
+    },
+    "Change Watch Folder..." : {
+
+    },
+    "Choose Fixed Folder..." : {
+
+    },
+    "Choose files to compress" : {
+
+    },
+    "Clear" : {
+
+    },
+    "Clear All History" : {
+
+    },
+    "Clear History…" : {
+
+    },
+    "Clear Recent Compressions?" : {
+
+    },
+    "Click to toggle %@ compression settings" : {
+
+    },
+    "Collapse Format Controls" : {
+
+    },
+    "Collapsed" : {
+
+    },
+    "Compare before and after" : {
+
+    },
+    "Complete" : {
+
+    },
+    "Completion Soundpack" : {
+
+    },
+    "Convert to Grayscale (B&W)" : {
+
+    },
+    "Converts scans & images to monochrome for extra reduction" : {
+
+    },
+    "Couldn't compress" : {
+
+    },
+    "Create" : {
+
+    },
+    "Create Project Folder" : {
+
+    },
+    "Create Subfolder for Compressed Files" : {
+
+    },
+    "Current queue" : {
+
+    },
+    "Custom" : {
+
+    },
+    "Custom Color Wheel & Spectrum" : {
+
+    },
+    "Custom Directory" : {
+
+    },
+    "Custom Max Size" : {
+
+    },
+    "Custom Staged Queue" : {
+
+    },
+    "DROP" : {
+
+    },
+    "Default App Theme Color" : {
+
+    },
+    "Delete Folder" : {
+
+    },
+    "Delete Selected" : {
+
+    },
+    "Depth" : {
+
+    },
+    "Deselect All" : {
+
+    },
+    "Deselect item" : {
+
+    },
+    "Dismiss" : {
+
+    },
+    "Dismiss all" : {
+
+    },
+    "Dismiss error for %@" : {
+
+    },
+    "Dock to Menu Bar" : {
+
+    },
+    "Document Optimization" : {
+
+    },
+    "Document Resolution (DPI)" : {
+
+    },
+    "Done" : {
+
+    },
+    "Double-click to change folder color" : {
+
+    },
+    "Double-click to rename folder" : {
+
+    },
+    "Drop files here or use 'Move' in Edit mode" : {
+
+    },
+    "Drop files here to compress them. Click to open SqueezeBar." : {
+
+    },
+    "Drop files here to customize individual settings before squeezing" : {
+
+    },
+    "Drop here" : {
+
+    },
+    "Drop media to compress immediately with current presets" : {
+
+    },
+    "Drop more files to add to queue" : {
+
+    },
+    "Drop to Add" : {
+
+    },
+    "Drop to Add to Queue" : {
+
+    },
+    "DropBall" : {
+
+    },
+    "Dynamically scales audio to maximize video quality" : {
+
+    },
+    "EDGE-DOCK" : {
+
+    },
+    "Edge-docked liquid glass drop zone for instant 1-drop compression." : {
+
+    },
+    "Edit" : {
+
+    },
+    "Enter a format pattern. Use '#' or '{index}' for auto-incrementing numbers." : {
+
+    },
+    "Expanded" : {
+
+    },
+    "Finder Right-Click Quick Action" : {
+
+    },
+    "Folder Color" : {
+
+    },
+    "Folder Name" : {
+
+    },
+    "Format / Codec" : {
+
+    },
+    "Format Target" : {
+
+    },
+    "Framerate (FPS)" : {
+
+    },
+    "Frostedness" : {
+
+    },
+    "GIF Framerate" : {
+
+    },
+    "HEX Code" : {
+
+    },
+    "Haptic Feedback on Completion" : {
+
+    },
+    "Hide DropBall" : {
+
+    },
+    "Homerenovation_#" : {
+      "shouldTranslate" : false
+    },
+    "Image Compression Quality" : {
+
+    },
+    "Image Quality" : {
+
+    },
+    "Images" : {
+
+    },
+    "Interface Scaling" : {
+
+    },
+    "Keeps 100% dimensions and compresses quality/bitrate" : {
+
+    },
+    "Keeps standard 128 kbps audio" : {
+
+    },
+    "LIVE PREVIEW:" : {
+
+    },
+    "Launch at System Startup" : {
+
+    },
+    "Liquid Glass" : {
+
+    },
+    "Liquid Glass depth" : {
+
+    },
+    "Liquid Glass frostedness" : {
+
+    },
+    "Liquid Glass settings" : {
+
+    },
+    "Lock Original Audio Quality" : {
+
+    },
+    "Lock Original Resolution" : {
+
+    },
+    "M" : {
+      "comment" : "Single-letter abbreviation of Manual on a narrow pill"
+    },
+    "Manual" : {
+
+    },
+    "Manual Quality" : {
+
+    },
+    "Metadata kept" : {
+
+    },
+    "Metadata removed" : {
+
+    },
+    "Monitors folder and automatically compresses any new image, video, or audio file dropped in." : {
+
+    },
+    "Move" : {
+
+    },
+    "Mute / Remove Audio Track" : {
+
+    },
+    "New Folder" : {
+
+    },
+    "Next to Original" : {
+
+    },
+    "None (Uncategorized)" : {
+
+    },
+    "Open Anchored Color Wheel" : {
+
+    },
+    "Open Before/After Comparison Inspector" : {
+
+    },
+    "Open SqueezeBar" : {
+
+    },
+    "Optimized_{index}" : {
+      "shouldTranslate" : false
+    },
+    "Optimizing..." : {
+
+    },
+    "Or specify a fixed Global Output Directory:" : {
+
+    },
+    "Original (100%)" : {
+
+    },
+    "Output File Suffix" : {
+
+    },
+    "Pause %@" : {
+
+    },
+    "Pause All" : {
+
+    },
+    "Pause running video and audio tasks" : {
+
+    },
+    "Pause this task" : {
+
+    },
+    "Pick color from screen" : {
+
+    },
+    "Plays dynamic audio feedback upon completing batch or single file squeezes." : {
+
+    },
+    "Quit" : {
+
+    },
+    "Ready to Squeeze" : {
+
+    },
+    "Recent" : {
+
+    },
+    "Recent actions" : {
+
+    },
+    "Release to Squeeze" : {
+
+    },
+    "Release to drop into %@" : {
+
+    },
+    "Removes author info and embedded thumbnail bloat" : {
+
+    },
+    "Rename" : {
+
+    },
+    "Rename Files" : {
+
+    },
+    "Rename Folder" : {
+
+    },
+    "Reset All Compression Stats" : {
+
+    },
+    "Resolution Scale" : {
+
+    },
+    "Resume %@" : {
+
+    },
+    "Resume All" : {
+
+    },
+    "Resume all paused tasks" : {
+
+    },
+    "Resume this task" : {
+
+    },
+    "Reveal in Finder" : {
+
+    },
+    "Save Destination" : {
+
+    },
+    "Scale, glass, accent colour" : {
+
+    },
+    "Select All" : {
+
+    },
+    "Select Folder to Watch..." : {
+
+    },
+    "Select Output Folder" : {
+
+    },
+    "Select Watch Folder" : {
+
+    },
+    "Select item" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Shows or hides transparency, frostedness, and depth controls" : {
+
+    },
+    "Sound Chime on Completion" : {
+
+    },
+    "Squeeze All (%lld)" : {
+
+    },
+    "Squeeze from Clipboard" : {
+
+    },
+    "SqueezeBar" : {
+
+    },
+    "SqueezeBar DropBall" : {
+
+    },
+    "SqueezeBar v1.1.0 • SirJameTV" : {
+
+    },
+    "Squeezed" : {
+
+    },
+    "Staged Queue (%lld)" : {
+
+    },
+    "Strip Document Metadata" : {
+
+    },
+    "Strip EXIF / Metadata" : {
+
+    },
+    "Subfolder Name:" : {
+
+    },
+    "Target Size Limit" : {
+
+    },
+    "This will remove recent items from your activity log. Original files on disk will not be deleted." : {
+
+    },
+    "Uncategorized" : {
+
+    },
+    "Undock as Floating Window" : {
+
+    },
+    "Universal Media Optimizer" : {
+
+    },
+    "Video" : {
+
+    },
+    "Video Bitrate" : {
+
+    },
+    "Welcome & File Access" : {
+
+    },
+    "_min" : {
+      "shouldTranslate" : false
+    },
+    "e.g. Homerenovation_# or Project_{index}" : {
+      "shouldTranslate" : false
+    },
+    "·  %@" : {
+      "shouldTranslate" : false
+    },
+    "•" : {
+      "shouldTranslate" : false
+    },
+    "• -%@" : {
+      "shouldTranslate" : false
+    },
+    "⌘V" : {
+      "shouldTranslate" : false
+    }
+  },
+  "version" : "1.0"
+}
