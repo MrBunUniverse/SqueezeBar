@@ -6,10 +6,13 @@ Drop images, video, audio or PDFs to compress them instantly, or stage them and 
 
 ## Downloads
 
-Grab the latest build from [Releases](../../releases/latest):
+<p>
+  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar.dmg"><img src="docs/download-macos.svg" alt="Download for macOS" height="76"></a>
+  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-x64.zip"><img src="docs/download-windows-x64.svg" alt="Download for Windows x64" height="76"></a>
+  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-arm64.zip"><img src="docs/download-windows-arm64.svg" alt="Download for Windows ARM64" height="76"></a>
+</p>
 
-- **macOS 26+**: `SqueezeBar-<version>.dmg`
-- **Windows 11**: `SqueezeBar-<version>-windows-x64.zip` (Intel/AMD) or `-windows-arm64.zip`. Unzip anywhere and run `SqueezeBar.exe`; no install, .NET or Windows App SDK needed. The app is unsigned, so SmartScreen may warn on first launch.
+On Windows, unzip anywhere and run `SqueezeBar.exe`; no install, .NET or Windows App SDK needed. The app is unsigned, so SmartScreen may warn on first launch. Older builds are on [Releases](../../releases).
 
 ## Features
 
