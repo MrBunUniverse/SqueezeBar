@@ -7,9 +7,9 @@ SqueezeBar sits quietly in your menu bar (Mac) or system tray (Windows). Drag a 
 ## Download
 
 <p>
-  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar.dmg"><img src="docs/download-macos.svg?v=3" alt="Download for macOS" height="56"></a>
-  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-x64.zip"><img src="docs/download-windows-x64.svg?v=3" alt="Download for Windows x64" height="56"></a>
-  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-arm64.zip"><img src="docs/download-windows-arm64.svg?v=3" alt="Download for Windows ARM64" height="56"></a>
+  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar.dmg"><img src="docs/button-macos.svg" alt="Download for macOS" height="56"></a>
+  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-x64.zip"><img src="docs/button-windows-x64.svg" alt="Download for Windows x64" height="56"></a>
+  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-arm64.zip"><img src="docs/button-windows-arm64.svg" alt="Download for Windows ARM64" height="56"></a>
 </p>
 
 **Mac:** open the download and drag SqueezeBar to Applications. Needs macOS 26 or later.  
