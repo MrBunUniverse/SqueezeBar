@@ -9,10 +9,11 @@ cd "$(dirname "$0")/.."
 
 APP_NAME="SqueezeBar"
 VERSION="1.1.0"
-OUTPUT_DMG="${APP_NAME}-${VERSION}.dmg"
+# Fixed name so github.com/<repo>/releases/latest/download/SqueezeBar.dmg always resolves.
+OUTPUT_DMG="${APP_NAME}.dmg"
 
 echo "=========================================="
-echo " Building ${APP_NAME} DMG Installer"
+echo " Building ${APP_NAME} ${VERSION} DMG Installer"
 echo "=========================================="
 
 # 1. Build and package the production app bundle
