@@ -1,2 +1,6 @@
 bin/
 obj/
+.artifacts-win/
+dist/
+spikes/
+vendor/

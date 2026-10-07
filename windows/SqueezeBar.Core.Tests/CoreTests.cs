@@ -25,6 +25,15 @@ public class DestinationNamingTests : IDisposable
     string Unique(string suffix, string source, IReadOnlySet<string>? reserved = null) =>
         Path.GetFileName(MediaCompressionEngine.UniqueDestination(_dir.Path, "clip", suffix, "mp4", source, reserved));
 
+    [Theory]
+    [InlineData("_small", "_small")]
+    [InlineData("*min", "min")]   // what the watch folder must look for, not the raw text
+    [InlineData("?", "_min")]
+    [InlineData("", "_min")]
+    [InlineData(null, "_min")]
+    public void SuffixIsWhatOutputNamesActuallyGet(string? typed, string expected) =>
+        Assert.Equal(expected, MediaCompressionEngine.OutputSuffix(typed));
+
     [Fact]
     public void PlainNameGetsSuffix() =>
         Assert.Equal("clip_min.mp4", Unique("_min", Path.Combine(_dir.Path, "clip.mp4")));
@@ -193,6 +202,73 @@ public class EncodePlanTests
     }
 }
 
+public class ImageAndPdfPlanTests
+{
+    static ImagePlan Image(CompressionConfiguration c, string ext, long size = 10_000_000, int w = 4000, int h = 3000) =>
+        ImagePlan.For(c, ext, size, w, h);
+
+    [Fact]
+    public void ManualJpegCapsResolutionOnlyAtLowQuality()
+    {
+        Assert.Equal(new ImagePlan(null, 0.85, false), Image(new(), "jpg"));
+        Assert.Equal(new ImagePlan(2048, 0.5, false), Image(new() { ImageQuality = 0.5 }, "jpg"));
+        Assert.Equal(0.512, Image(new() { ImageQuality = 0.5 }, "jpg").Scale(1.0, 4000), 3);
+    }
+
+    [Fact]
+    public void PngIsLosslessWhenHighQualityAndJpegInsideWhenLow()
+    {
+        Assert.Equal(new ImagePlan(null, 1.0, false), Image(new(), "png"));
+        Assert.True(Image(new() { ImageQuality = 0.3 }, "png").JpegInsidePng);
+        // An explicit PNG choice must stay a real PNG (Mac test: testExplicitPNGStaysPNGAtLowQuality).
+        Assert.False(Image(new() { ImageQuality = 0.3, ImageFormatPolicy = ImageFormatPolicy.PngLossless }, "png").JpegInsidePng);
+    }
+
+    [Fact]
+    public void TargetSizeLeavesSmallFilesAloneAndSqueezesLargeOnes()
+    {
+        var target = new CompressionConfiguration { TargetSizeMode = TargetSizeMode.Web2 };
+        Assert.Equal(new ImagePlan(null, 0.95, false), Image(target, "jpg", size: 1_000_000));
+        var big = Image(target, "jpg", size: 20_000_000);   // ratio ~0.0996
+        Assert.Equal(2560, big.MaxLongEdge);
+        Assert.Equal(0.268, big.Quality, 3);
+        Assert.Null(Image(target with { PreserveResolutionInTargetMode = true }, "jpg", size: 20_000_000).MaxLongEdge);
+    }
+
+    [Fact]
+    public void PdfTargetSizeLowersDpiAndQualityByPageBudget()
+    {
+        Assert.Equal(new PdfPlan(150, 0.70), PdfPlan.For(new(), 50_000_000, 10));
+        var target = new CompressionConfiguration { TargetSizeMode = TargetSizeMode.Web2, PdfDpi = PdfDpiOption.Dpi300 };
+        Assert.Equal(new PdfPlan(300, 0.70), PdfPlan.For(target, 1_000_000, 100));   // already under target
+        Assert.Equal(new PdfPlan(72, 0.50), PdfPlan.For(target, 50_000_000, 100));    // ~21 KB per page
+        Assert.Equal(new PdfPlan(150, 0.70), PdfPlan.For(target, 50_000_000, 8));     // ~262 KB per page
+    }
+}
+
+public class FolderWatchTests : IDisposable
+{
+    readonly TempDir _dir = new();
+    public void Dispose() => _dir.Dispose();
+
+    [Fact]
+    public async Task NewMediaFilesAreReportedButOutputsAndOtherFilesAreNot()
+    {
+        var seen = new List<string>();
+        using var watch = new FolderWatch();
+        watch.Start(_dir.Path, () => "_min", path => { lock (seen) seen.Add(Path.GetFileName(path)); });
+
+        _dir.File("photo.png", "pixels");
+        _dir.File("photo_min.png", "our own output");
+        _dir.File("notes.txt", "not media");
+        File.Move(_dir.File("download.tmp", "video bytes"), Path.Combine(_dir.Path, "clip.mp4")); // browser-style rename
+
+        for (int i = 0; i < 80 && seen.Count < 2; i++) await Task.Delay(100);
+        await Task.Delay(300);
+        lock (seen) Assert.Equal(["clip.mp4", "photo.png"], seen.Order());
+    }
+}
+
 public class StagedQueueItemTests
 {
     [Fact]
@@ -278,6 +354,16 @@ public class EngineTests : IDisposable
     }
 
     [Fact]
+    public async Task ForbiddenCharactersInSuffixAndSubfolderAreDropped()
+    {
+        var src = _dir.File("in/a.png");
+        var finished = new List<(CompressionResult? Result, string? Error)>();
+        await Engine(Copy, finished).ProcessDroppedAsync([src],
+            new() { Suffix = "_s:m/a*ll", ExportToSubfolder = true, SubfolderName = "out<put>?" });
+        Assert.Equal(Path.Combine(_dir.Path, "in", "output", "a_small.png"), finished.Single().Result!.OutputPath);
+    }
+
+    [Fact]
     public async Task WriteFailureFallsBackToDownloadsFolder()
     {
         var src = _dir.File("in/a.png");
@@ -333,6 +419,31 @@ public class EngineTests : IDisposable
         Assert.Equal(MediaCompressionEngine.Cancelled, finished.Single().Error);
         Assert.False(File.Exists(Path.Combine(_dir.Path, "in", "a_min.mp4")));
         Assert.Empty(Directory.GetFiles(fallback));
+    }
+
+    [Fact]
+    public async Task SeparateCallsShareOneConcurrencyLimit()
+    {
+        // Six single-file submissions (as the watch folder or Explorer menu make) must not run six encodes at once.
+        int running = 0, peak = 0;
+        var finished = new List<(CompressionResult? Result, string? Error)>();
+        var engine = Engine(async (_, dst, _, _, _) =>
+        {
+            int now = Interlocked.Increment(ref running);
+            InterlockedMax(ref peak, now);
+            await Task.Delay(60);
+            File.WriteAllText(dst, "x");
+            Interlocked.Decrement(ref running);
+        }, finished);
+        await Task.WhenAll(Enumerable.Range(0, 6).Select(i => engine.ProcessDroppedAsync([_dir.File($"f{i}.png")], new())));
+        Assert.Equal(6, finished.Count);
+        Assert.InRange(peak, 1, Environment.ProcessorCount <= 8 ? 2 : 4);
+
+        static void InterlockedMax(ref int target, int value)
+        {
+            int seen;
+            while (value > (seen = Volatile.Read(ref target)) && Interlocked.CompareExchange(ref target, value, seen) != seen) { }
+        }
     }
 
     [Fact]

@@ -1,0 +1,7 @@
+<Project>
+  <!-- The same folder is built from macOS (Core tests) and from Windows through the Parallels share.
+       Windows output goes to its own folder so the two never fight over bin/ and obj/. -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <ArtifactsPath>$(MSBuildThisFileDirectory).artifacts-win</ArtifactsPath>
+  </PropertyGroup>
+</Project>

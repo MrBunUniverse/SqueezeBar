@@ -1,0 +1,12 @@
+<Project>
+  <!-- Copies the bundled FFmpeg (fallback engine) next to the built program. Fetch it once with scripts/fetch-ffmpeg.sh. -->
+  <PropertyGroup>
+    <FfmpegArch Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier.Replace('win-', ''))</FfmpegArch>
+    <FfmpegArch Condition="'$(FfmpegArch)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</FfmpegArch>
+    <FfmpegDir>$(MSBuildThisFileDirectory)vendor\ffmpeg\$(FfmpegArch)\</FfmpegDir>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(FfmpegDir)ffmpeg.exe')">
+    <Content Include="$(FfmpegDir)ffmpeg.exe" Link="ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(FfmpegDir)LICENSE.txt" Link="ffmpeg-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

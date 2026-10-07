@@ -22,6 +22,13 @@ public sealed class MediaCompressionEngine(IReadOnlyDictionary<MediaType, Compre
     readonly ConcurrentDictionary<Guid, JobControl> _controls = new();
     readonly Dictionary<Guid, string> _destinations = [];
 
+    // Shared by every call: the watch folder and Explorer menu submit files one at a time, and
+    // a per-call limit would let those all encode at once.
+    readonly SemaphoreSlim _slots = new(Environment.ProcessorCount <= 8 ? 2 : 4);
+
+    // Windows' list, used on every platform so the tests behave the same on the Mac.
+    static readonly HashSet<char> InvalidNameChars = [.. "<>:\"/\\|?*", .. Enumerable.Range(0, 32).Select(i => (char)i)];
+
     /// <summary>Whether this machine can encode an image extension. Unavailable formats fall back to JPEG.</summary>
     public Func<string, bool> CanEncodeImage { get; set; } = _ => true;
 
@@ -63,12 +70,11 @@ public sealed class MediaCompressionEngine(IReadOnlyDictionary<MediaType, Compre
             JobAdded?.Invoke(job.Id, job.Path, job.Type);
         }
 
-        using var slots = new SemaphoreSlim(Environment.ProcessorCount <= 8 ? 2 : 4);
         await Task.WhenAll(jobs.Select(async job =>
         {
-            await slots.WaitAsync();
+            await _slots.WaitAsync();
             try { await ProcessSingleFileAsync(job.Id, job.Path, job.Type, job.Config, targetFolderId); }
-            finally { slots.Release(); }
+            finally { _slots.Release(); }
         }));
 
         BatchFinished?.Invoke();
@@ -140,18 +146,29 @@ public sealed class MediaCompressionEngine(IReadOnlyDictionary<MediaType, Compre
                 folder = config.CustomOutputFolder;
             if (config.ExportToSubfolder)
             {
-                folder = Path.Combine(folder, string.IsNullOrWhiteSpace(config.SubfolderName) ? "Squeezed" : config.SubfolderName);
+                var subfolder = string.Concat(config.SubfolderName.Where(c => !InvalidNameChars.Contains(c))).Trim(' ', '.');
+                folder = Path.Combine(folder, subfolder.Length == 0 ? "Squeezed" : subfolder);
                 Directory.CreateDirectory(folder);
             }
         }
 
-        var suffix = string.IsNullOrEmpty(config.Suffix) ? "_min" : config.Suffix;
+        var suffix = OutputSuffix(config.Suffix);
         var extension = OutputExtension(source, type, config, CanEncodeImage);
         lock (_destinations)
         {
             var reserved = new HashSet<string>(_destinations.Values, StringComparer.OrdinalIgnoreCase);
             return _destinations[jobId] = UniqueDestination(folder, Path.GetFileNameWithoutExtension(source), suffix, extension, source, reserved);
         }
+    }
+
+    /// <summary>
+    /// The suffix as it ends up in output names. It is typed by the user; characters Windows forbids in file names
+    /// would make every job fail. The watch folder recognises its own outputs by this, so it must use the same value.
+    /// </summary>
+    public static string OutputSuffix(string? suffix)
+    {
+        var clean = string.Concat((suffix ?? "").Where(c => !InvalidNameChars.Contains(c)));
+        return clean.Length == 0 ? "_min" : clean;
     }
 
     /// <summary>The extension the output will have. Compressors encode to whatever this returns.</summary>
@@ -208,6 +225,7 @@ public sealed class MediaCompressionEngine(IReadOnlyDictionary<MediaType, Compre
         return paths
             .SelectMany(p => Directory.Exists(p) ? Directory.EnumerateFiles(p, "*", options) : File.Exists(p) ? [p] : [])
             .Where(p => MediaTypes.Classify(p) != MediaType.Unsupported)
+            .Select(Path.GetFullPath) // same file can arrive as in/a.png and in\a.png
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

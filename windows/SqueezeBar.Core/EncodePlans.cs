@@ -85,3 +85,85 @@ public readonly record struct AudioPlan(int Bitrate, int Channels, int SampleRat
             bitrate <= 16_000 ? 16_000 : bitrate <= 32_000 ? 22_050 : 44_100);
     }
 }
+
+/// <summary>
+/// How to encode one image, ported from AcceleratedImageCompressor.swift.
+/// <c>JpegInsidePng</c> keeps the .png name but writes JPEG bytes, the Mac app's way of making a PNG lossy.
+/// </summary>
+public readonly record struct ImagePlan(double? MaxLongEdge, double Quality, bool JpegInsidePng)
+{
+    public static ImagePlan For(CompressionConfiguration config, string outputExtension, long sourceSize, int sourceWidth, int sourceHeight)
+    {
+        var plan = Decide(config, outputExtension, sourceSize, Math.Max(sourceWidth, sourceHeight));
+        return config.ImageFormatPolicy == ImageFormatPolicy.PngLossless ? plan with { JpegInsidePng = false } : plan;
+    }
+
+    static ImagePlan Decide(CompressionConfiguration config, string ext, long sourceSize, double longEdge)
+    {
+        bool isPng = ext == "png";
+        bool isLossy = ext is "jpg" or "jpeg" or "heic" or "heif" or "webp" or "avif";
+        bool keepResolution = config.PreserveResolutionInTargetMode;
+        double quality = config.ImageQuality;
+
+        if (config.EffectiveTargetSizeMB is double targetMB)
+        {
+            double targetBytes = targetMB * 1024.0 * 1024.0 * 0.95;
+            if (sourceSize <= targetBytes) return new(null, 0.95, false);
+            double ratio = targetBytes / Math.Max(sourceSize, 1);
+
+            if (isLossy)
+                return keepResolution
+                    ? new(null, Math.Clamp(ratio * 0.70, 0.12, 0.85), false)
+                    : new(Cap(ratio, 0.20, 0.10), Math.Clamp(Math.Sqrt(ratio) * 0.85, 0.20, 0.90), false);
+            if (isPng)
+            {
+                if (ratio < 0.60 || keepResolution)
+                    return new(keepResolution ? null : Cap(ratio, 0.30, 0.15), Math.Clamp(ratio * 0.65, 0.15, 0.85), true);
+                return new(longEdge * Math.Clamp(Math.Sqrt(ratio), 0.30, 1.0), 1.0, false);
+            }
+        }
+
+        if (isLossy) return new(quality <= 0.50 ? 2048 : quality <= 0.65 ? 3072 : null, quality, false);
+        if (isPng)
+        {
+            if (quality >= 0.85) return new(null, 1.0, false);
+            if (quality >= 0.65) return new(Math.Min(longEdge, 3840), 1.0, false);
+            return new(Math.Min(longEdge, 2560), Math.Clamp(0.40 + (quality - 0.30) * 0.30 / 0.34, 0.35, 0.75), true);
+        }
+        return new(quality <= 0.60 ? 2048 : null, quality, false);
+
+        double? Cap(double ratio, double at2560, double at1920) =>
+            ratio < at2560 && longEdge > 2560 ? 2560 : ratio < at1920 && longEdge > 1920 ? 1920 : null;
+    }
+
+    /// <summary>Final resize factor (aspect ratio kept) from the user's scale and this plan's size cap.</summary>
+    public double Scale(double resolutionScale, double longEdge)
+    {
+        double scale = Math.Clamp(resolutionScale, 0.10, 1.0);
+        if (MaxLongEdge is double max && longEdge * scale > max) scale = max / longEdge;
+        return scale;
+    }
+}
+
+/// <summary>Render DPI and JPEG quality for a rasterised PDF, ported from AcceleratedPDFCompressor.swift.</summary>
+public readonly record struct PdfPlan(double Dpi, double Quality)
+{
+    public static PdfPlan For(CompressionConfiguration config, long sourceSize, int pageCount)
+    {
+        double dpi = (int)config.PdfDpi, quality = config.PdfImageQuality;
+        if (config.EffectiveTargetSizeMB is double targetMB && sourceSize > targetMB * 1024.0 * 1024.0)
+        {
+            double budgetPerPage = targetMB * 1024.0 * 1024.0 / Math.Max(pageCount, 1);
+            (double maxDpi, double maxQuality) = budgetPerPage switch
+            {
+                < 60_000 => (72.0, 0.50),
+                < 180_000 => (120.0, 0.65),
+                < 400_000 => (150.0, 0.75),
+                _ => (dpi, quality),
+            };
+            dpi = Math.Min(dpi, maxDpi);
+            quality = Math.Min(quality, maxQuality);
+        }
+        return new(Math.Max(dpi, 36.0), quality);
+    }
+}
