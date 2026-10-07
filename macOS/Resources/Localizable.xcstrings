@@ -105,6 +105,9 @@
     "Audio Bitrate" : {
 
     },
+    "Audio Studio" : {
+
+    },
     "Auto-squeeze watch folder" : {
 
     },
@@ -184,6 +187,9 @@
     "Complete" : {
 
     },
+    "Completed" : {
+
+    },
     "Completion feedback" : {
 
     },
@@ -197,6 +203,9 @@
 
     },
     "Converts scans & images to monochrome for extra reduction" : {
+
+    },
+    "Copy File" : {
 
     },
     "Couldn't compress" : {
@@ -224,6 +233,9 @@
 
     },
     "Custom directory" : {
+
+    },
+    "DROP" : {
 
     },
     "Default App Theme Color" : {
@@ -271,6 +283,9 @@
     "Drop files here or use 'Move' in Edit mode" : {
 
     },
+    "Drop files here to compress them. Click to open SqueezeBar." : {
+
+    },
     "Drop files here to set options per file before squeezing" : {
 
     },
@@ -304,6 +319,15 @@
     "Enter a format pattern. Use '#' or '{index}' for auto-incrementing numbers." : {
 
     },
+    "Failed" : {
+
+    },
+    "Failed to render or compress PDF pages." : {
+
+    },
+    "Failed to save the compressed PDF to destination." : {
+
+    },
     "Finder right-click quick action" : {
 
     },
@@ -335,6 +359,9 @@
 
     },
     "Haptic feedback on completion" : {
+
+    },
+    "Hide DropBall" : {
 
     },
     "Homerenovation_#" : {
@@ -376,6 +403,9 @@
     "Lock Original Resolution" : {
 
     },
+    "Loop Playback" : {
+
+    },
     "M" : {
       "comment" : "Single-letter abbreviation of Manual on a narrow pill"
     },
@@ -394,6 +424,9 @@
     "Move" : {
 
     },
+    "Mute" : {
+
+    },
     "Mute / Remove Audio Track" : {
 
     },
@@ -409,6 +442,15 @@
     "None (Uncategorized)" : {
 
     },
+    "OPTIMIZED" : {
+
+    },
+    "ORIGINAL" : {
+
+    },
+    "ORIGINAL LOSSLESS" : {
+
+    },
     "Off" : {
 
     },
@@ -418,6 +460,9 @@
     "Open Before/After Comparison Inspector" : {
 
     },
+    "Open SqueezeBar" : {
+
+    },
     "Optimized_{index}" : {
       "shouldTranslate" : false
     },
@@ -425,6 +470,9 @@
 
     },
     "Original (100%)" : {
+
+    },
+    "Original (Before)" : {
 
     },
     "Output" : {
@@ -445,7 +493,13 @@
     "Pause this task" : {
 
     },
+    "Paused" : {
+
+    },
     "Pick color from screen" : {
+
+    },
+    "Pinch / Scroll to zoom • Drag to pan • Drag center handle to split" : {
 
     },
     "Plays dynamic audio feedback upon completing batch or single file squeezes." : {
@@ -508,14 +562,33 @@
     "Resume this task" : {
 
     },
+    "Resuming..." : {
+
+    },
     "Reveal in Finder" : {
 
     },
     "Review settings first" : {
 
     },
+    "SQUEEZED AUDIO" : {
+
+    },
     "Save to folder" : {
 
+    },
+    "Saved %@" : {
+
+    },
+    "Saved %@ (-%lld%%)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Saved %1$@ (-%2$lld%%)"
+          }
+        }
+      }
     },
     "Saved %@ so far" : {
 
@@ -541,7 +614,13 @@
     "Shading" : {
 
     },
+    "Side by Side" : {
+
+    },
     "Sound chime on completion" : {
+
+    },
+    "Split Slider" : {
 
     },
     "Squeeze All (%lld)" : {
@@ -553,10 +632,16 @@
     "SqueezeBar" : {
 
     },
+    "SqueezeBar DropBall" : {
+
+    },
     "SqueezeBar v1.1.0 • SirJameTV" : {
 
     },
     "Squeezed" : {
+
+    },
+    "Squeezed (After)" : {
 
     },
     "Staged Queue (%lld)" : {
@@ -580,6 +665,12 @@
     "Transparency" : {
 
     },
+    "Transparent Quality • AAC / M4A • 48 kHz" : {
+
+    },
+    "Unable to open or parse the PDF document." : {
+
+    },
     "Uncategorized" : {
 
     },
@@ -587,6 +678,9 @@
 
     },
     "Universal Media Optimizer" : {
+
+    },
+    "Unmute" : {
 
     },
     "Video" : {

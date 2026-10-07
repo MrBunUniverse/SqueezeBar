@@ -248,15 +248,16 @@ public struct FloatingBallView: View {
                 .shadow(color: .black.opacity(0.30), radius: 2)
                 .transition(.scale.combined(with: .opacity))
         } else if state.isProcessing {
-            VStack(spacing: 1) {
-                Text("\(Int(state.overallProgress * 100))%")
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+            if state.areAllPausableJobsPaused {
+                Image(systemName: "pause.fill")
+                    .font(.system(size: 18, weight: .black, design: .rounded))
                     .foregroundColor(state.accentColor)
-                    .shadow(color: state.accentColor.opacity(0.60), radius: 4)
-                
-                Image(systemName: state.areAllPausableJobsPaused ? "pause.fill" : "bolt.horizontal.fill")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
-                    .foregroundColor(state.accentColor)
+            } else {
+                SqueezeProgressMark(progress: state.overallProgress, color: state.accentColor, restColor: Color.white.opacity(0.45))
+                    .frame(width: 28, height: 33)
+                    .shadow(color: state.accentColor.opacity(0.55), radius: 5)
+                    .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
+                    .accessibilityLabel("\(Int(state.overallProgress * 100))%")
             }
         } else if isDropTargeted {
             VStack(spacing: 2) {
@@ -273,7 +274,7 @@ public struct FloatingBallView: View {
             // Bold vibrant emblem with luminous ambient glow
             SqueezeClampShape()
                 .fill(state.accentColor)
-                .frame(width: 22, height: 26)
+                .frame(width: 28, height: 33)
                 .shadow(color: state.accentColor.opacity(0.65), radius: 6, x: 0, y: 1)
                 .shadow(color: .black.opacity(0.40), radius: 3, x: 0, y: 1.5)
         }

@@ -228,9 +228,24 @@ public struct QuickPopoverView: View {
         let isDetached = isDetachedWindow || state.isDetached
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("SqueezeBar")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .tracking(0.35)
+                // The animated S mark stands in for the "S" of the name. Idle: slow light sweep;
+                // while squeezing: bars light up with overall progress, like the menu bar icon.
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    Group {
+                        if state.isProcessing {
+                            SqueezeProgressMark(progress: state.overallProgress, color: state.accentColor)
+                        } else {
+                            SqueezeWaveMark()
+                        }
+                    }
+                    .frame(width: 17, height: 20)
+
+                    Text(verbatim: "queezeBar")
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .tracking(0.35)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("SqueezeBar")
                 
                 Group {
                     if state.totalBytesSaved > 0 {

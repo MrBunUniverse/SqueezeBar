@@ -289,32 +289,16 @@ public final class StatusItemDropView: NSView {
         clampImage.draw(in: iconRect)
     }
     
-    // MARK: - Render: Circular Progress Indicator
+    // MARK: - Render: S Mark Filling With Progress
     private func drawProcessingState(in rect: NSRect, progress: Double, context: CGContext) {
-        let size: CGFloat = 16.0
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = (size - 2.5) / 2.0
-        
-        context.saveGState()
-        
-        // Background track (semi-transparent white)
-        context.setLineWidth(2.0)
-        context.setStrokeColor(NSColor.white.withAlphaComponent(0.25).cgColor)
-        context.addArc(center: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
-        context.strokePath()
-        
-        // Progress arc (vibrant bright cyan/blue)
-        let startAngle: CGFloat = -.pi / 2.0
-        let currentProg = max(0.05, min(progress, 1.0))
-        let endAngle: CGFloat = startAngle + CGFloat(currentProg * .pi * 2.0)
-        
-        context.setLineWidth(2.2)
-        context.setLineCap(.round)
-        context.setStrokeColor(NSColor(red: 0.25, green: 0.75, blue: 1.0, alpha: 1.0).cgColor)
-        context.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
-        context.strokePath()
-        
-        context.restoreGState()
+        let iconSize: CGFloat = 17.0
+        let iconRect = NSRect(
+            x: (rect.width - iconSize) / 2,
+            y: (rect.height - iconSize) / 2,
+            width: iconSize,
+            height: iconSize
+        )
+        NSImage.squeezeProgressImage(size: iconSize, color: .white, progress: progress).draw(in: iconRect)
     }
     
     // MARK: - Render: Success Checkmark Badge

@@ -94,6 +94,43 @@ struct SqueezeWaveMark: View {
     }
 }
 
+// MARK: - Progress Fill
+/// The S mark as a progress indicator: dim at rest, each bar brightening in turn from the top as `progress` goes 0 to 1.
+struct SqueezeProgressMark: View {
+    var progress: Double
+    var color: Color = .white
+    /// Unlit bars. A neutral tone reads better than a faded `color` on glass.
+    var restColor: Color = Color.white.opacity(0.28)
+
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = CGRect(origin: .zero, size: proxy.size)
+            ZStack {
+                SqueezeClampShape().fill(restColor)
+                ForEach(0..<SqueezeClampShape.barCount, id: \.self) { i in
+                    SqueezeClampShape().barPath(i, in: rect)
+                        .fill(color.opacity(SqueezeClampShape.barLevel(i, progress: progress)))
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.35), value: progress)
+    }
+}
+
+public extension SqueezeClampShape {
+    /// How lit bar `index` is (0...1) for a job progress. Bars light one after another; the first is
+    /// never fully dark so a new job reads as started.
+    static func barLevel(_ index: Int, progress: Double) -> Double {
+        let p = min(max(progress, 0.04), 1.0)
+        return min(max(p * Double(barCount) - Double(index), 0), 1)
+    }
+
+    /// Single-colour variant: opacity from `rest` up to 1.
+    static func barOpacity(_ index: Int, progress: Double, rest: Double = 0.28) -> Double {
+        rest + (1 - rest) * barLevel(index, progress: progress)
+    }
+}
+
 // MARK: - AppKit Drawing Helper
 public extension NSImage {
     static func squeezeClampImage(size: CGFloat = 18, color: NSColor = .white) -> NSImage {
@@ -112,6 +149,24 @@ public extension NSImage {
 
         img.unlockFocus()
         img.isTemplate = true
+        return img
+    }
+
+    /// AppKit twin of `SqueezeProgressMark` for the menu bar.
+    static func squeezeProgressImage(size: CGFloat = 18, color: NSColor = .white, progress: Double) -> NSImage {
+        let img = NSImage(size: NSSize(width: size, height: size))
+        img.lockFocus()
+        let rect = NSRect(x: 0, y: 0, width: size, height: size)
+        // Shape paths are y-down; the lockFocus context is y-up.
+        var flip = CGAffineTransform(translationX: 0, y: size).scaledBy(x: 1, y: -1)
+        let context = NSGraphicsContext.current?.cgContext
+        for i in 0..<SqueezeClampShape.barCount {
+            let bar = SqueezeClampShape().barPath(i, in: rect).cgPath
+            context?.addPath(bar.copy(using: &flip) ?? bar)
+            context?.setFillColor(color.withAlphaComponent(SqueezeClampShape.barOpacity(i, progress: progress)).cgColor)
+            context?.fillPath()
+        }
+        img.unlockFocus()
         return img
     }
 }
