@@ -19,7 +19,7 @@
         </Grid.RowDefinitions>
 
         <!-- Header (drags the window while pinned) -->
-        <Grid x:Name="Header" Padding="20,14,18,12" Background="Transparent" PointerPressed="OnHeaderPressed">
+        <Grid x:Name="Header" Padding="20,14,18,12" Background="Transparent" PointerPressed="OnHeaderPressed" PointerMoved="OnHeaderMoved" PointerReleased="OnHeaderReleased" PointerCaptureLost="OnHeaderCaptureLost">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

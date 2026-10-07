@@ -23,8 +23,11 @@ public sealed partial class MainWindow : Window
 {
     [DllImport("user32")] static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32")] static extern bool SetForegroundWindow(IntPtr hwnd);
-    [DllImport("user32")] static extern bool ReleaseCapture();
-    [DllImport("user32")] static extern IntPtr SendMessageW(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [StructLayout(LayoutKind.Sequential)] struct CursorPoint { public int X, Y; }
+    [DllImport("user32")] static extern bool GetCursorPos(out CursorPoint point);
+    bool _dragging;
+    CursorPoint _dragCursor;
+    PointInt32 _dragWindow;
 
     static Color Accent => Ui.Accent;
     static readonly Color Green = Color.FromArgb(255, 82, 209, 107);
@@ -181,9 +184,29 @@ public sealed partial class MainWindow : Window
     void OnHeaderPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!_pinned || !e.GetCurrentPoint(Header).Properties.IsLeftButtonPressed) return;
-        // Hand the drag to Windows as if the header were a title bar.
-        ReleaseCapture();
-        SendMessageW(Handle, 0x00A1 /* WM_NCLBUTTONDOWN */, 2 /* HTCAPTION */, IntPtr.Zero);
+        // Moved by hand: Windows' own caption drag (WM_NCLBUTTONDOWN) never saw the button release
+        // because XAML held the pointer, so the window stayed glued to the cursor.
+        GetCursorPos(out _dragCursor);
+        _dragWindow = AppWindow.Position;
+        _dragging = Header.CapturePointer(e.Pointer);
+    }
+
+    void OnHeaderMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging) return;
+        if (!e.GetCurrentPoint(Header).Properties.IsLeftButtonPressed) { EndHeaderDrag(e); return; }
+        GetCursorPos(out var now);
+        AppWindow.Move(new PointInt32(_dragWindow.X + now.X - _dragCursor.X, _dragWindow.Y + now.Y - _dragCursor.Y));
+    }
+
+    void OnHeaderCaptureLost(object sender, PointerRoutedEventArgs e) => _dragging = false;
+
+    void OnHeaderReleased(object sender, PointerRoutedEventArgs e) => EndHeaderDrag(e);
+
+    void EndHeaderDrag(PointerRoutedEventArgs e)
+    {
+        _dragging = false;
+        Header.ReleasePointerCapture(e.Pointer);
     }
 
     void OnQuit(object sender, RoutedEventArgs e)
