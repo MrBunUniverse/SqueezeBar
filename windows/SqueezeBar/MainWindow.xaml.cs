@@ -81,7 +81,6 @@ public sealed partial class MainWindow : Window
         _deck = new FormatDeck(TilesRow, Drawer, _state);
         _queue = new QueueView(QueueHost, _state, this);
         BuildMark(MarkCanvas);
-        (_headerBars, _headerSweep) = BuildMark(HeaderMarkCanvas);
         SelectTab(settings: false);
         ApplyAppearance(rebuild: true);
         RestartWatchFolder();
@@ -123,6 +122,7 @@ public sealed partial class MainWindow : Window
         var prefs = _state.Prefs;
         Ui.SetAccent(prefs);
         if (!rebuild) return;
+        RebuildHeaderMark();
 
         var (width, height) = PixelSize();
         if (_pinned) AppWindow.Resize(new SizeInt32(width, height));
@@ -420,8 +420,25 @@ public sealed partial class MainWindow : Window
         if (idle) return;
         double p = Math.Clamp(_jobs.Values.Average(r => r.Bar.Value), 0.04, 1);
         for (int i = 0; i < _headerBars.Length; i++)
-            _headerBars[i].Opacity = 0.28 + 0.72 * Math.Clamp(p * _headerBars.Length - i, 0, 1);
+        {
+            double level = Math.Clamp(p * _headerBars.Length - i, 0, 1);
+            _headerBars[i].Opacity = 0.28 + 0.72 * level;
+            ((SolidColorBrush)_headerBars[i].Fill).Color = Mix(Colors.White, Accent, level);
+        }
     }
+
+    /// <summary>Redraws the header S in the current accent. Runs on every appearance change, so the sweep follows the theme.</summary>
+    void RebuildHeaderMark()
+    {
+        _headerSweep?.Stop();
+        HeaderMarkCanvas.Children.Clear();
+        (_headerBars, _headerSweep) = BuildMark(HeaderMarkCanvas, Accent);
+        _headerSweeping = true;
+        UpdateHeaderMark();
+    }
+
+    static Color Mix(Color from, Color to, double t) => Color.FromArgb(255,
+        (byte)(from.R + (to.R - from.R) * t), (byte)(from.G + (to.G - from.G) * t), (byte)(from.B + (to.B - from.B) * t));
 
     void OnCancelAll(object sender, RoutedEventArgs e) => _state.Engine.CancelAll();
 
@@ -484,18 +501,20 @@ public sealed partial class MainWindow : Window
 
     // MARK: - S mark and motion
 
-    /// <summary>Five rounded bars on the Mac app's 1024 design grid, with the same slow top-to-bottom light sweep.</summary>
-    static (Rectangle[] Bars, Storyboard Sweep) BuildMark(Canvas canvas)
+    /// <summary>Five rounded bars on the Mac app's 1024 design grid, with the same slow top-to-bottom light sweep.
+    /// With <paramref name="lit"/>, each bar also glows toward that colour as the sweep passes (the header S).</summary>
+    static (Rectangle[] Bars, Storyboard Sweep) BuildMark(Canvas canvas, Color? lit = null)
     {
         var rects = new Rectangle[5];
         (double X0, double X1, double Y)[] bars = [(290, 800, 170), (224, 484, 312), (224, 800, 454), (540, 800, 596), (224, 734, 738)];
         var sweep = new Storyboard { RepeatBehavior = RepeatBehavior.Forever };
         for (int i = 0; i < bars.Length; i++)
         {
+            var fill = new SolidColorBrush(Colors.White);
             var bar = new Rectangle
             {
                 Width = bars[i].X1 - bars[i].X0, Height = 116, RadiusX = 58, RadiusY = 58,
-                Fill = new SolidColorBrush(Colors.White), Opacity = 0.20,
+                Fill = fill, Opacity = 0.20,
             };
             Canvas.SetLeft(bar, bars[i].X0 - 224);
             Canvas.SetTop(bar, bars[i].Y - 170);
@@ -513,6 +532,20 @@ public sealed partial class MainWindow : Window
             Storyboard.SetTarget(frames, bar);
             Storyboard.SetTargetProperty(frames, "Opacity");
             sweep.Children.Add(frames);
+
+            if (lit is Color glow)
+            {
+                var tint = new ColorAnimationUsingKeyFrames();
+                void Tint(double seconds, Color value) => tint.KeyFrames.Add(new EasingColorKeyFrame
+                {
+                    KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromSeconds(Math.Max(0, seconds))), Value = value,
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+                });
+                Tint(peak - half, Colors.White); Tint(peak, glow); Tint(peak + half, Colors.White); Tint(6.0, Colors.White);
+                Storyboard.SetTarget(tint, fill);
+                Storyboard.SetTargetProperty(tint, "Color");
+                sweep.Children.Add(tint);
+            }
         }
         sweep.Begin();
         return (rects, sweep);

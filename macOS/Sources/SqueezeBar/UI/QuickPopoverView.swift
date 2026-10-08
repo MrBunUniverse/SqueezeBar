@@ -230,12 +230,12 @@ public struct QuickPopoverView: View {
             VStack(alignment: .leading, spacing: 1) {
                 // The animated S mark stands in for the "S" of the name. Idle: slow light sweep;
                 // while squeezing: bars light up with overall progress, like the menu bar icon.
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Group {
                         if state.isProcessing {
                             SqueezeProgressMark(progress: state.overallProgress, color: state.accentColor)
                         } else {
-                            SqueezeWaveMark()
+                            SqueezeWaveMark(lit: state.accentColor)
                         }
                     }
                     .frame(width: 17, height: 20)

@@ -48,7 +48,10 @@ public struct SqueezeClampShape: Shape {
 /// The S mark with a slow, soft light that sweeps top to bottom: each bar brightens a little as the
 /// wave passes, then eases back down. Static when Reduce Motion is on.
 struct SqueezeWaveMark: View {
+    /// Resting colour of the bars.
     var base: Color = .white
+    /// Colour a bar glows toward as the wave passes over it.
+    var lit: Color = .white
     var restOpacity: Double = 0.20
     var peakOpacity: Double = 0.50
     /// Seconds for one full sweep, including a short rest before the next.
@@ -72,15 +75,17 @@ struct SqueezeWaveMark: View {
             let shape = SqueezeClampShape()
             ZStack {
                 ForEach(0..<SqueezeClampShape.barCount, id: \.self) { i in
+                    let level = level(forBar: i, time: time)
                     shape.barPath(i, in: rect)
-                        .fill(base.opacity(opacity(forBar: i, time: time)))
+                        .fill(base.mix(with: lit, by: level).opacity(restOpacity + (peakOpacity - restOpacity) * level))
                 }
             }
         }
     }
 
-    private func opacity(forBar i: Int, time: Double?) -> Double {
-        guard let time else { return restOpacity }
+    /// 0 at rest, 1 when the wave is centred on bar `i`, eased in between.
+    private func level(forBar i: Int, time: Double?) -> Double {
+        guard let time else { return 0 }
         let n = Double(SqueezeClampShape.barCount)
         // Wave centre travels from above the first bar to below the last, then rests.
         let phase = (time.truncatingRemainder(dividingBy: period)) / period
@@ -89,8 +94,7 @@ struct SqueezeWaveMark: View {
         let d = abs(Double(i) - centre)
         let width = 1.3
         let t = max(0, 1 - d / width)
-        let eased = t * t * (3 - 2 * t)
-        return restOpacity + (peakOpacity - restOpacity) * eased
+        return t * t * (3 - 2 * t)
     }
 }
 
