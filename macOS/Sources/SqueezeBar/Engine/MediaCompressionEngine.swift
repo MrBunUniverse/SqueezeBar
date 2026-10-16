@@ -364,8 +364,9 @@ public actor MediaCompressionEngine {
         
         // Auto-create subfolder (e.g. "Squeezed") if enabled
         if customFolder == nil && config.exportToSubfolder {
-            let subfolderName = config.subfolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Squeezed" : config.subfolderName
-            let targetSubfolder = folder.appendingPathComponent(subfolderName)
+            // Dots trimmed too, so ".." can't climb out of the folder.
+            let cleaned = Self.safeNamePart(config.subfolderName).trimmingCharacters(in: CharacterSet(charactersIn: " ."))
+            let targetSubfolder = folder.appendingPathComponent(cleaned.isEmpty ? "Squeezed" : cleaned)
             if !FileManager.default.fileExists(atPath: targetSubfolder.path) {
                 try? FileManager.default.createDirectory(at: targetSubfolder, withIntermediateDirectories: true)
             }
@@ -388,16 +389,29 @@ public actor MediaCompressionEngine {
             targetExt = sourceURL.pathExtension
         }
         
-        let suffix = config.suffix.isEmpty ? "_min" : config.suffix
         let reservedPaths = Set(activeDestinationURLs.values.map(\.path))
         return Self.uniqueDestinationURL(
             folder: folder,
             baseName: baseName,
-            suffix: suffix,
+            suffix: Self.outputSuffix(config.suffix),
             extension: targetExt,
             sourceURL: sourceURL,
             reservedPaths: reservedPaths
         )
+    }
+
+    /// Text the user typed (suffix, subfolder, rename pattern) reduced to something that can only name a file
+    /// inside the chosen folder: no path separators, no ":" (Finder shows it as "/"), no control characters.
+    static func safeNamePart(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter {
+            $0 != "/" && $0 != ":" && !CharacterSet.controlCharacters.contains($0)
+        }))
+    }
+
+    /// The suffix as it appears in output names. The watch folder recognises its own outputs by it, so both use this.
+    static func outputSuffix(_ suffix: String) -> String {
+        let cleaned = safeNamePart(suffix)
+        return cleaned.isEmpty ? "_min" : cleaned
     }
 
     /// Picks an output name that never collides with an existing file, the source itself,

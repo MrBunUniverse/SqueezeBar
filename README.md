@@ -12,7 +12,7 @@ SqueezeBar sits quietly in your menu bar (Mac) or system tray (Windows). Drag a 
   <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-arm64.zip"><img src="docs/button-windows-arm64.svg" alt="Download for Windows ARM64" height="56"></a>
 </p>
 
-**Mac:** open the download and drag SqueezeBar to Applications. Needs macOS 26 or later.  
+**Mac:** open the download and drag SqueezeBar to Applications. Needs macOS 26 or later. The first time you open it, macOS says it can't check the app for malicious software; choose **Done**, then open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to SqueezeBar.  
 **Windows:** unzip the download anywhere and double-click `SqueezeBar.exe`. There's nothing to install. Windows may show a "protected your PC" notice the first time; choose **More info**, then **Run anyway**.
 
 Looking for an older version? See [Releases](../../releases).
