@@ -39,6 +39,7 @@ public struct HardwareVideoCompressor: Sendable {
         to destinationURL: URL,
         config: CompressionConfiguration,
         control: JobControl? = nil,
+        preloadedAsset: AVURLAsset? = nil,
         progressHandler: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         // Never delete the input: the destination is removed below before the source is read.
@@ -49,7 +50,7 @@ public struct HardwareVideoCompressor: Sendable {
         // Ensure destination does not exist
         try? FileManager.default.removeItem(at: destinationURL)
         
-        let asset = AVURLAsset(url: sourceURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+        let asset = preloadedAsset ?? AVURLAsset(url: sourceURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         
         // Load asset properties
         let tracks: [AVAssetTrack]
@@ -397,7 +398,6 @@ public struct HardwareVideoCompressor: Sendable {
         }
         
         let frameInterval = 1.0 / max(targetFPS, 1.0)
-        let frameStep = max(1, Int((sourceFPS / targetFPS).rounded()))
         
         // Adaptive resolution for GIF (keep dimensions compact to avoid huge files)
         let manualScale = min(max(config.videoResolutionScale, 0.20), 1.0)
@@ -423,7 +423,7 @@ public struct HardwareVideoCompressor: Sendable {
             timeRange: CMTimeRange(start: .zero, duration: duration)
         ))
         let composition = AVVideoComposition(configuration: .init(
-            frameDuration: CMTime(seconds: 1.0 / sourceFPS, preferredTimescale: 600),
+            frameDuration: CMTime(seconds: frameInterval, preferredTimescale: 600),
             instructions: [instruction], renderSize: CGSize(width: dstW, height: dstH)
         ))
 
@@ -465,7 +465,6 @@ public struct HardwareVideoCompressor: Sendable {
             ]
         ]
         
-        var frameIndex = 0
         var addedCount = 0
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         
@@ -486,34 +485,31 @@ public struct HardwareVideoCompressor: Sendable {
                 progressHandler?(prog)
             }
             
-            if frameIndex % frameStep == 0 {
-                if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                    CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
-                    let baseAddress = CVPixelBufferGetBaseAddress(imageBuffer)
-                    let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer)
-                    let width = CVPixelBufferGetWidth(imageBuffer)
-                    let height = CVPixelBufferGetHeight(imageBuffer)
+            if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+                CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
+                let baseAddress = CVPixelBufferGetBaseAddress(imageBuffer)
+                let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer)
+                let width = CVPixelBufferGetWidth(imageBuffer)
+                let height = CVPixelBufferGetHeight(imageBuffer)
+                
+                let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
+                if let context = CGContext(
+                    data: baseAddress,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: bytesPerRow,
+                    space: colorSpace,
+                    bitmapInfo: bitmapInfo
+                ), let cgImage = context.makeImage() {
+                    CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly)
                     
-                    let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
-                    if let context = CGContext(
-                        data: baseAddress,
-                        width: width,
-                        height: height,
-                        bitsPerComponent: 8,
-                        bytesPerRow: bytesPerRow,
-                        space: colorSpace,
-                        bitmapInfo: bitmapInfo
-                    ), let cgImage = context.makeImage() {
-                        CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly)
-                        
-                        CGImageDestinationAddImage(destination, cgImage, frameProperties as CFDictionary)
-                        addedCount += 1
-                    } else {
-                        CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly)
-                    }
+                    CGImageDestinationAddImage(destination, cgImage, frameProperties as CFDictionary)
+                    addedCount += 1
+                } else {
+                    CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly)
                 }
             }
-            frameIndex += 1
         }
         
         guard addedCount > 0 else {

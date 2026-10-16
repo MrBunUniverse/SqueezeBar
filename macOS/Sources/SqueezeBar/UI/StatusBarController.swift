@@ -88,11 +88,12 @@ public final class StatusBarController: NSObject {
             ])
         }
 
-        let dragEvents: NSEvent.EventTypeMask = [.leftMouseDragged, .leftMouseUp, .keyDown]
+        // The global monitor watches drags only. Keys reach us through the local monitor (Esc cancels a hover).
+        let dragEvents: NSEvent.EventTypeMask = [.leftMouseDragged, .leftMouseUp]
         dragEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: dragEvents) { [weak self] event in
             self?.handleFileDragEvent(event)
         }
-        localDragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: dragEvents) { [weak self] event in
+        localDragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: dragEvents.union(.keyDown)) { [weak self] event in
             self?.handleFileDragEvent(event)
             return event
         }
@@ -198,6 +199,8 @@ public final class StatusBarController: NSObject {
             }
             
             // Monitor clicks outside to dismiss (only if not pinned and not clicking on Color Panel)
+            // showPopover can run while already shown (ball click, Open Hub); drop the old monitor or it outlives the popover.
+            if let monitor = eventMonitor { NSEvent.removeMonitor(monitor) }
             eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 guard let self = self else { return }
                 guard !AppState.shared.isPinned else { return }

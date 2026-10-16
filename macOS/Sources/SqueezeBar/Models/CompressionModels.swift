@@ -49,31 +49,6 @@ public enum UIScaleOption: String, Codable, Sendable, CaseIterable {
     }
 }
 
-// MARK: - DropBall Animation Style
-public enum DropBallAnimationStyle: String, Codable, Sendable, CaseIterable, Identifiable {
-    case calm = "Calm"
-    case standard = "Standard"
-    case exaggerated = "Exaggerated"
-    
-    public var id: String { rawValue }
-    
-    public var icon: String {
-        switch self {
-        case .calm: return "leaf.fill"
-        case .standard: return "drop.fill"
-        case .exaggerated: return "sparkles"
-        }
-    }
-    
-    public var description: String {
-        switch self {
-        case .calm: return "Soft, minimal ease with gentle edge tucking"
-        case .standard: return "Crisp, balanced liquid glass bounce"
-        case .exaggerated: return "Exaggerated fluid spring with juicy jelly bounce"
-        }
-    }
-}
-
 // MARK: - Accent Color Theme
 public enum AccentColorTheme: String, Codable, Sendable, CaseIterable {
     case custom = "Custom"

@@ -4,6 +4,14 @@ import Combine
 import AppKit
 import ServiceManagement
 
+/// Running jobs and their aggregate progress. Kept apart from AppState so a progress tick only re-renders the views that show jobs.
+@MainActor
+public final class JobBoard: ObservableObject {
+    @Published public var activeJobs: [CompressionJob] = []
+    @Published public var overallProgress: Double = 0.0
+    @Published public var isProcessing: Bool = false
+}
+
 @MainActor
 public final class AppState: ObservableObject {
     public static let shared = AppState()
@@ -89,8 +97,6 @@ public final class AppState: ObservableObject {
         }
     }
     
-    // Fixed DropBall animation preset; the glass look is drawn directly in FloatingBallView.
-    public let dropBallAnimationStyle: DropBallAnimationStyle = .exaggerated
 
     // MARK: - UI Scaling / Display Density Option
     @Published public var uiScale: UIScaleOption {
@@ -398,31 +404,31 @@ public final class AppState: ObservableObject {
     @MainActor
     public func addFilesToQueue(_ urls: [URL]) {
         let baseConfig = currentConfiguration()
-        var addedCount = 0
-        for url in urls {
-            var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
-                let resolved = MediaCompressionEngine.shared.gatherMediaFiles(from: [url])
-                for subURL in resolved {
-                    let mediaType = MediaType.classify(url: subURL)
-                    guard mediaType != MediaType.unsupported else { continue }
-                    let size = (try? subURL.resourceValues(forKeys: [URLResourceKey.fileSizeKey]).fileSize).map { Int64($0) } ?? 0
-                    let item = StagedQueueItem(fileURL: subURL, originalSize: size, mediaType: mediaType, baseConfig: baseConfig)
-                    stagedQueue.append(item)
-                    addedCount += 1
+        Task {
+            // Folder walks and file-size lookups run off the main thread; the queue is updated once, here.
+            let found = await Task.detached(priority: .userInitiated) { () -> [(url: URL, size: Int64, mediaType: MediaType)] in
+                var found: [(url: URL, size: Int64, mediaType: MediaType)] = []
+                for url in urls {
+                    var isDir: ObjCBool = false
+                    let isFolder = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+                    for candidate in isFolder ? MediaCompressionEngine.shared.gatherMediaFiles(from: [url]) : [url] {
+                        let mediaType = MediaType.classify(url: candidate)
+                        guard mediaType != MediaType.unsupported else { continue }
+                        let size = (try? candidate.resourceValues(forKeys: [URLResourceKey.fileSizeKey]).fileSize).map { Int64($0) } ?? 0
+                        found.append((candidate, size, mediaType))
+                    }
                 }
-            } else {
-                let mediaType = MediaType.classify(url: url)
-                guard mediaType != MediaType.unsupported else { continue }
-                let size = (try? url.resourceValues(forKeys: [URLResourceKey.fileSizeKey]).fileSize).map { Int64($0) } ?? 0
-                let item = StagedQueueItem(fileURL: url, originalSize: size, mediaType: mediaType, baseConfig: baseConfig)
-                stagedQueue.append(item)
-                addedCount += 1
+                return found
+            }.value
+            
+            let items = found.map {
+                StagedQueueItem(fileURL: $0.url, originalSize: $0.size, mediaType: $0.mediaType, baseConfig: baseConfig)
             }
-        }
-        
-        if addedCount > 0 && hapticEnabled {
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            stagedQueue.append(contentsOf: items)
+            
+            if !items.isEmpty && hapticEnabled {
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            }
         }
     }
     
@@ -531,9 +537,11 @@ public final class AppState: ObservableObject {
     @Published public var inspectedResult: CompressionResult? = nil
     
     // MARK: - Runtime State
-    @Published public var isProcessing: Bool = false
-    @Published public var overallProgress: Double = 0.0
-    @Published public var activeJobs: [CompressionJob] = []
+    // Job progress ticks on their own object, so they don't re-render every AppState observer.
+    public let jobs = JobBoard()
+    public var isProcessing: Bool { jobs.isProcessing }
+    public var overallProgress: Double { jobs.overallProgress }
+    public var activeJobs: [CompressionJob] { jobs.activeJobs }
     @Published public var recentResults: [CompressionResult] = []
     @Published public var showSuccessBadge: Bool = false
     @Published public var showFailureBadge: Bool = false
@@ -654,9 +662,6 @@ public final class AppState: ObservableObject {
         } else {
             self.soundEnabled = UserDefaults.standard.bool(forKey: Keys.soundEnabled)
         }
-        
-        // Every feature is free; drop the flag left over from the old supporter tier.
-        UserDefaults.standard.removeObject(forKey: "squeezebar.isProUser")
         
         self.totalBytesSaved = Int64(UserDefaults.standard.integer(forKey: Keys.totalBytesSaved))
         self.totalOriginalBytes = Int64(UserDefaults.standard.integer(forKey: Keys.totalOriginalBytes))
@@ -822,54 +827,59 @@ public final class AppState: ObservableObject {
         
         // 2. Check for image data (e.g. screenshot copied to clipboard)
         if let imgData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
-            let tempSource = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard_temp_\(UUID().uuidString).png")
             let config = currentConfiguration()
-            let tempDest = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard_squeezed_\(UUID().uuidString).\(AcceleratedImageCompressor().outputExtension(for: tempSource, config: config))")
-            
-            do {
-                try imgData.write(to: tempSource)
-                let originalSize = Int64(imgData.count)
-                let startTime = Date()
+            Task {
+                // Encoding a large screenshot takes seconds, so it runs off the main actor.
+                let outcome = await Task.detached(priority: .userInitiated) { () -> (result: CompressionResult, data: Data)? in
+                    let tempSource = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard_temp_\(UUID().uuidString).png")
+                    let tempDest = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard_squeezed_\(UUID().uuidString).\(AcceleratedImageCompressor().outputExtension(for: tempSource, config: config))")
+                    do {
+                        try imgData.write(to: tempSource)
+                        let originalSize = Int64(imgData.count)
+                        let startTime = Date()
+                        
+                        try AcceleratedImageCompressor().compressImage(from: tempSource, to: tempDest, config: config)
+                        let compressedData = try Data(contentsOf: tempDest)
+                        let result = CompressionResult(
+                            originalURL: tempSource,
+                            outputURL: tempDest,
+                            originalSize: originalSize,
+                            compressedSize: Int64(compressedData.count),
+                            duration: Date().timeIntervalSince(startTime),
+                            mediaType: .image
+                        )
+                        return (result, compressedData)
+                    } catch {
+                        print("Clipboard squeeze failed: \(error)")
+                        return nil
+                    }
+                }.value
                 
-                try AcceleratedImageCompressor().compressImage(from: tempSource, to: tempDest, config: config)
-                let compressedData = try Data(contentsOf: tempDest)
-                let compressedSize = Int64(compressedData.count)
+                guard let outcome else { return }
                 
                 // Write compressed data back to clipboard
                 pasteboard.clearContents()
-                if let compressedImage = NSImage(data: compressedData) {
-                    pasteboard.writeObjects([compressedImage, tempDest as NSURL])
+                if let compressedImage = NSImage(data: outcome.data) {
+                    pasteboard.writeObjects([compressedImage, outcome.result.outputURL as NSURL])
                 }
                 
-                let duration = Date().timeIntervalSince(startTime)
-                let result = CompressionResult(
-                    originalURL: tempSource,
-                    outputURL: tempDest,
-                    originalSize: originalSize,
-                    compressedSize: compressedSize,
-                    duration: duration,
-                    mediaType: .image
-                )
-                
-                recordResult(result)
+                recordResult(outcome.result)
                 triggerSuccessBadge()
-            } catch {
-                print("Clipboard squeeze failed: \(error)")
             }
         }
     }
     
     // MARK: - Job Management
     public func addJob(_ job: CompressionJob) {
-        activeJobs.append(job)
+        jobs.activeJobs.append(job)
         updateProcessingState()
     }
     
     public func updateJob(id: UUID, progress: Double, statusText: String) {
-        if let idx = activeJobs.firstIndex(where: { $0.id == id }) {
-            activeJobs[idx].progress = progress
-            if !activeJobs[idx].isPaused {
-                activeJobs[idx].statusText = statusText
+        if let idx = jobs.activeJobs.firstIndex(where: { $0.id == id }) {
+            jobs.activeJobs[idx].progress = progress
+            if !jobs.activeJobs[idx].isPaused {
+                jobs.activeJobs[idx].statusText = statusText
             }
             updateProcessingState()
         }
@@ -877,25 +887,25 @@ public final class AppState: ObservableObject {
     
     public func finishJob(id: UUID, result: CompressionResult?, error: String?) {
         JobControlRegistry.shared.remove(id)
-        if let idx = activeJobs.firstIndex(where: { $0.id == id }) {
-            activeJobs[idx].isFinished = true
-            activeJobs[idx].isPaused = false
-            activeJobs[idx].error = error
+        if let idx = jobs.activeJobs.firstIndex(where: { $0.id == id }) {
+            jobs.activeJobs[idx].isFinished = true
+            jobs.activeJobs[idx].isPaused = false
+            jobs.activeJobs[idx].error = error
             if let result = result {
-                activeJobs[idx].statusText = String(localized: "Saved \(result.formattedSaved) (-\(Int(result.percentSaved))%)")
-                activeJobs[idx].progress = 1.0
+                jobs.activeJobs[idx].statusText = String(localized: "Saved \(result.formattedSaved) (-\(Int(result.percentSaved))%)")
+                jobs.activeJobs[idx].progress = 1.0
                 recordResult(result)
             } else {
-                activeJobs[idx].statusText = error ?? String(localized: "Failed")
+                jobs.activeJobs[idx].statusText = error ?? String(localized: "Failed")
                 if let error, error != "Cancelled" {
-                    recordFailure(fileName: activeJobs[idx].fileURL.lastPathComponent, message: error)
+                    recordFailure(fileName: jobs.activeJobs[idx].fileURL.lastPathComponent, message: error)
                 }
             }
         }
         
         Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            self.activeJobs.removeAll { $0.id == id }
+            self.jobs.activeJobs.removeAll { $0.id == id }
             self.updateProcessingState()
         }
         
@@ -904,37 +914,37 @@ public final class AppState: ObservableObject {
     
     // MARK: - Pause / Resume
     public var hasPausableJobs: Bool {
-        activeJobs.contains { !$0.isFinished && $0.canPause }
+        jobs.activeJobs.contains { !$0.isFinished && $0.canPause }
     }
     
     public var areAllPausableJobsPaused: Bool {
-        let pausable = activeJobs.filter { !$0.isFinished && $0.canPause }
+        let pausable = jobs.activeJobs.filter { !$0.isFinished && $0.canPause }
         return !pausable.isEmpty && pausable.allSatisfy { $0.isPaused }
     }
     
     public func pauseJob(id: UUID) {
-        guard let idx = activeJobs.firstIndex(where: { $0.id == id }),
-              activeJobs[idx].canPause, !activeJobs[idx].isFinished else { return }
+        guard let idx = jobs.activeJobs.firstIndex(where: { $0.id == id }),
+              jobs.activeJobs[idx].canPause, !jobs.activeJobs[idx].isFinished else { return }
         JobControlRegistry.shared.control(for: id).pause()
-        activeJobs[idx].isPaused = true
-        activeJobs[idx].statusText = String(localized: "Paused")
+        jobs.activeJobs[idx].isPaused = true
+        jobs.activeJobs[idx].statusText = String(localized: "Paused")
     }
     
     public func resumeJob(id: UUID) {
-        guard let idx = activeJobs.firstIndex(where: { $0.id == id }), activeJobs[idx].isPaused else { return }
+        guard let idx = jobs.activeJobs.firstIndex(where: { $0.id == id }), jobs.activeJobs[idx].isPaused else { return }
         JobControlRegistry.shared.control(for: id).resume()
-        activeJobs[idx].isPaused = false
-        activeJobs[idx].statusText = String(localized: "Resuming...")
+        jobs.activeJobs[idx].isPaused = false
+        jobs.activeJobs[idx].statusText = String(localized: "Resuming...")
     }
     
     public func pauseAllJobs() {
-        for job in activeJobs where job.canPause && !job.isFinished && !job.isPaused {
+        for job in jobs.activeJobs where job.canPause && !job.isFinished && !job.isPaused {
             pauseJob(id: job.id)
         }
     }
     
     public func resumeAllJobs() {
-        for job in activeJobs where job.isPaused {
+        for job in jobs.activeJobs where job.isPaused {
             resumeJob(id: job.id)
         }
     }
@@ -942,11 +952,11 @@ public final class AppState: ObservableObject {
     public func cancelJob(id: UUID) {
         // Stop the encode immediately instead of waiting for the engine actor.
         JobControlRegistry.shared.control(for: id).cancel()
-        if let idx = activeJobs.firstIndex(where: { $0.id == id }) {
-            activeJobs[idx].isPaused = false
-            activeJobs[idx].isFinished = true
-            activeJobs[idx].error = "Cancelled"
-            activeJobs[idx].statusText = String(localized: "Cancelled")
+        if let idx = jobs.activeJobs.firstIndex(where: { $0.id == id }) {
+            jobs.activeJobs[idx].isPaused = false
+            jobs.activeJobs[idx].isFinished = true
+            jobs.activeJobs[idx].error = "Cancelled"
+            jobs.activeJobs[idx].statusText = String(localized: "Cancelled")
         }
         updateProcessingState()
         
@@ -956,21 +966,21 @@ public final class AppState: ObservableObject {
         
         Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
-            self.activeJobs.removeAll { $0.id == id }
+            self.jobs.activeJobs.removeAll { $0.id == id }
             self.updateProcessingState()
         }
     }
     
     public func cancelAllJobs() {
-        for job in activeJobs where !job.isFinished {
+        for job in jobs.activeJobs where !job.isFinished {
             JobControlRegistry.shared.control(for: job.id).cancel()
         }
-        for idx in activeJobs.indices {
-            if !activeJobs[idx].isFinished {
-                activeJobs[idx].isPaused = false
-                activeJobs[idx].isFinished = true
-                activeJobs[idx].error = "Cancelled"
-                activeJobs[idx].statusText = String(localized: "Cancelled")
+        for idx in jobs.activeJobs.indices {
+            if !jobs.activeJobs[idx].isFinished {
+                jobs.activeJobs[idx].isPaused = false
+                jobs.activeJobs[idx].isFinished = true
+                jobs.activeJobs[idx].error = "Cancelled"
+                jobs.activeJobs[idx].statusText = String(localized: "Cancelled")
             }
         }
         updateProcessingState()
@@ -981,19 +991,19 @@ public final class AppState: ObservableObject {
         
         Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
-            self.activeJobs.removeAll { $0.isFinished }
+            self.jobs.activeJobs.removeAll { $0.isFinished }
             self.updateProcessingState()
         }
     }
     
     private func updateProcessingState() {
-        let unfinished = activeJobs.filter { !$0.isFinished }
-        isProcessing = !unfinished.isEmpty
+        let unfinished = jobs.activeJobs.filter { !$0.isFinished }
+        jobs.isProcessing = !unfinished.isEmpty
         if unfinished.isEmpty {
-            overallProgress = 0.0
+            jobs.overallProgress = 0.0
         } else {
             let total = unfinished.reduce(0.0) { $0 + $1.progress }
-            overallProgress = total / Double(unfinished.count)
+            jobs.overallProgress = total / Double(unfinished.count)
         }
     }
     

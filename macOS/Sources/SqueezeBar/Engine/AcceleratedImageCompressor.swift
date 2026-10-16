@@ -116,34 +116,31 @@ public struct AcceleratedImageCompressor: Sendable {
             
             let frameProps = (CGImageSourceCopyPropertiesAtIndex(imageSource, i, nil) as? [CFString: Any]) ?? [:]
             
-            guard var cgImage = CGImageSourceCreateImageAtIndex(imageSource, i, sourceOptions as CFDictionary) else {
-                continue
+            // Decode once, at the output size: ImageIO applies EXIF rotation and downscales in the same pass.
+            let sourceLongEdge = CGFloat(max((frameProps[kCGImagePropertyPixelWidth] as? Int) ?? 0, (frameProps[kCGImagePropertyPixelHeight] as? Int) ?? 0))
+            let scaleFactor = CGFloat(config.imageResolutionScale)
+            var targetLongEdge = sourceLongEdge
+            if scaleFactor < 0.999 || strategy.maxDimension != nil {
+                targetLongEdge = min(sourceLongEdge * min(max(scaleFactor, 0.10), 1.0), strategy.maxDimension ?? .greatestFiniteMagnitude)
             }
-
             // Bake EXIF rotation/mirroring into pixels so stripping metadata cannot turn a portrait sideways.
-            if ((frameProps[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1) != 1 {
-                let orientationOptions: [CFString: Any] = [
+            let needsRotation = ((frameProps[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1) != 1
+            let cgImage: CGImage
+            if needsRotation || Int(targetLongEdge.rounded()) < Int(sourceLongEdge.rounded()) {
+                let thumbnailOptions: [CFString: Any] = [
                     kCGImageSourceCreateThumbnailFromImageAlways: true,
                     kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: max(cgImage.width, cgImage.height)
+                    kCGImageSourceThumbnailMaxPixelSize: max(1, Int(targetLongEdge.rounded()))
                 ]
-                guard let orientedImage = CGImageSourceCreateThumbnailAtIndex(imageSource, i, orientationOptions as CFDictionary) else {
+                guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(imageSource, i, thumbnailOptions as CFDictionary) else {
                     throw ImageCompressorError.noImageInSource
                 }
-                cgImage = orientedImage
-            }
-            
-            // --- Resolution scaling (preserves aspect ratio without cropping) ---
-            let sizedImage: CGImage
-            let scaleFactor = CGFloat(config.imageResolutionScale)
-            if scaleFactor < 0.999 || strategy.maxDimension != nil {
-                sizedImage = resizeImage(
-                    cgImage: cgImage,
-                    scaleFactor: scaleFactor,
-                    maxLongEdge: strategy.maxDimension
-                ) ?? cgImage
+                cgImage = thumbnail
             } else {
-                sizedImage = cgImage
+                guard let image = CGImageSourceCreateImageAtIndex(imageSource, i, sourceOptions as CFDictionary) else {
+                    continue
+                }
+                cgImage = image
             }
             
             // --- Build per-frame destination properties ---
@@ -172,7 +169,7 @@ public struct AcceleratedImageCompressor: Sendable {
                 opts[kCGImagePropertyGIFDictionary] = gifProps
             }
             
-            CGImageDestinationAddImage(destination, sizedImage, opts as CFDictionary)
+            CGImageDestinationAddImage(destination, cgImage, opts as CFDictionary)
         }
         
         progressHandler?(0.88)
@@ -348,51 +345,6 @@ public struct AcceleratedImageCompressor: Sendable {
             useJPEGFallback: false,
             label: "other q=\(quality)"
         )
-    }
-    
-    // ==========================================================================
-    // MARK: - HIGH-QUALITY RESIZE (Aspect-Ratio Preserving, Zero Cropping)
-    // ==========================================================================
-    
-    /// Downscales an image by scaleFactor or so that its longest edge is <= maxLongEdge.
-    /// Preserves exact aspect ratio with zero cropping using high-quality interpolation.
-    private func resizeImage(cgImage: CGImage, scaleFactor: CGFloat = 1.0, maxLongEdge: CGFloat? = nil) -> CGImage? {
-        let srcW = CGFloat(cgImage.width)
-        let srcH = CGFloat(cgImage.height)
-        let longEdge = max(srcW, srcH)
-        
-        var effectiveScale = min(max(scaleFactor, 0.10), 1.0)
-        if let maxDim = maxLongEdge, longEdge * effectiveScale > maxDim {
-            effectiveScale = maxDim / longEdge
-        }
-        
-        guard effectiveScale < 0.999 else { return cgImage }
-        
-        let dstW = max(1, Int((srcW * effectiveScale).rounded()))
-        let dstH = max(1, Int((srcH * effectiveScale).rounded()))
-        
-        guard dstW > 0, dstH > 0 else { return cgImage }
-        
-        // Use CGContext with high-quality interpolation
-        let colorSpace = cgImage.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
-        let hasAlpha = cgImage.alphaInfo != .none && cgImage.alphaInfo != .noneSkipLast && cgImage.alphaInfo != .noneSkipFirst
-        let bitmapInfo = hasAlpha
-            ? CGImageAlphaInfo.premultipliedLast.rawValue
-            : CGImageAlphaInfo.noneSkipLast.rawValue
-        
-        guard let ctx = CGContext(
-            data: nil,
-            width: dstW,
-            height: dstH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,  // let CG choose optimal stride
-            space: colorSpace,
-            bitmapInfo: bitmapInfo
-        ) else { return nil }
-        
-        ctx.interpolationQuality = .high
-        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: dstW, height: dstH))
-        return ctx.makeImage()
     }
     
     // ==========================================================================

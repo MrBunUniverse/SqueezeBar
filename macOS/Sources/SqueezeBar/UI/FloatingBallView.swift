@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 public struct FloatingBallView: View {
     @ObservedObject private var state = AppState.shared
+    @ObservedObject private var jobs = AppState.shared.jobs
     @ObservedObject private var liquidModel = LiquidBallModel.shared
     
     @State private var isHovered: Bool = false
@@ -20,7 +21,7 @@ public struct FloatingBallView: View {
     public init() {}
     
     private var isTuckedState: Bool {
-        liquidModel.isTucked && !isHovered && !isDropTargeted && !state.isProcessing && !liquidModel.isMoving
+        liquidModel.isTucked && !isHovered && !isDropTargeted && !jobs.isProcessing && !liquidModel.isMoving
     }
     
     private var isRightEdge: Bool {
@@ -32,11 +33,7 @@ public struct FloatingBallView: View {
     }
     
     private var currentRevealSpring: Animation {
-        switch state.dropBallAnimationStyle {
-        case .calm: return .spring(response: 0.38, dampingFraction: 0.82)
-        case .standard: return .spring(response: 0.35, dampingFraction: 0.58, blendDuration: 0.05)
-        case .exaggerated: return .spring(response: 0.40, dampingFraction: 0.44, blendDuration: 0.08)
-        }
+        .spring(response: 0.40, dampingFraction: 0.44, blendDuration: 0.08)
     }
     
     // Smooth X Offset: Tucked vs Popped/Revealed
@@ -44,13 +41,8 @@ public struct FloatingBallView: View {
         if liquidModel.isMoving {
             return 0
         }
-        let popoutOffset: CGFloat
-        switch state.dropBallAnimationStyle {
-        case .calm: popoutOffset = 10
-        case .standard: popoutOffset = 16
-        case .exaggerated: popoutOffset = 22
-        }
-        
+        let popoutOffset: CGFloat = 22
+
         if isTuckedState {
             // Keep the sides compressed while letting more of the rounded tip show.
             return isRightEdge ? FloatingBallController.tuckedOffset : -FloatingBallController.tuckedOffset
@@ -62,23 +54,13 @@ public struct FloatingBallView: View {
     
     // Fluid Dynamic Scale (Stretch & Squash Physics)
     private var targetScaleX: CGFloat {
-        let hoverScale: CGFloat
-        switch state.dropBallAnimationStyle {
-        case .calm: hoverScale = 1.04
-        case .standard: hoverScale = 1.08
-        case .exaggerated: hoverScale = 1.15
-        }
+        let hoverScale: CGFloat = 1.15
         let base: CGFloat = isTuckedState ? FloatingBallController.tuckedScaleX : (isDropTargeted ? (hoverScale * 1.08) : (isHovered ? hoverScale : 1.0))
         return base * liquidModel.scaleX
     }
     
     private var targetScaleY: CGFloat {
-        let hoverScale: CGFloat
-        switch state.dropBallAnimationStyle {
-        case .calm: hoverScale = 1.04
-        case .standard: hoverScale = 1.08
-        case .exaggerated: hoverScale = 1.15
-        }
+        let hoverScale: CGFloat = 1.15
         let base: CGFloat = isTuckedState ? 1.06 : (isDropTargeted ? (hoverScale * 1.08) : (isHovered ? hoverScale : 1.0))
         return base * liquidModel.scaleY
     }
@@ -133,16 +115,16 @@ public struct FloatingBallView: View {
             glassPane
             
             // Processing Circular Progress Arc
-            if state.isProcessing {
+            if jobs.isProcessing {
                 Circle()
-                    .trim(from: 0.0, to: max(0.05, CGFloat(min(1.0, state.overallProgress))))
+                    .trim(from: 0.0, to: max(0.05, CGFloat(min(1.0, jobs.overallProgress))))
                     .stroke(
                         state.accentColor,
                         style: StrokeStyle(lineWidth: 3.0, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
                     .frame(width: 52, height: 52)
-                    .animation(.linear(duration: 0.2), value: state.overallProgress)
+                    .animation(.linear(duration: 0.2), value: jobs.overallProgress)
             }
             
             // Floating Jewel Emblem suspended inside the Glass Core
@@ -158,7 +140,7 @@ public struct FloatingBallView: View {
         .animation(currentRevealSpring, value: isTuckedState)
         .animation(currentRevealSpring, value: isHovered)
         .animation(currentRevealSpring, value: isDropTargeted)
-        .animation(currentRevealSpring, value: state.isProcessing)
+        .animation(currentRevealSpring, value: jobs.isProcessing)
     }
     
     // Clear bubble-like glass without blur: whatever is behind the ball stays sharp.
@@ -247,17 +229,17 @@ public struct FloatingBallView: View {
                 .shadow(color: Color.green.opacity(0.60), radius: 6)
                 .shadow(color: .black.opacity(0.30), radius: 2)
                 .transition(.scale.combined(with: .opacity))
-        } else if state.isProcessing {
+        } else if jobs.isProcessing {
             if state.areAllPausableJobsPaused {
                 Image(systemName: "pause.fill")
                     .font(.system(size: 18, weight: .black, design: .rounded))
                     .foregroundColor(state.accentColor)
             } else {
-                SqueezeProgressMark(progress: state.overallProgress, color: state.accentColor, restColor: Color.white.opacity(0.45))
+                SqueezeProgressMark(progress: jobs.overallProgress, color: state.accentColor, restColor: Color.white.opacity(0.45))
                     .frame(width: 28, height: 33)
                     .shadow(color: state.accentColor.opacity(0.55), radius: 5)
                     .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
-                    .accessibilityLabel("\(Int(state.overallProgress * 100))%")
+                    .accessibilityLabel("\(Int(jobs.overallProgress * 100))%")
             }
         } else if isDropTargeted {
             VStack(spacing: 2) {
