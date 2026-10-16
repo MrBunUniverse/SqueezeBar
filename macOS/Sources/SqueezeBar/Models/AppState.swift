@@ -557,7 +557,7 @@ public final class AppState: ObservableObject {
     private init() {
         // Load Image Settings
         let savedImgFormat = UserDefaults.standard.string(forKey: Keys.imageFormatPolicy) ?? ""
-        self.imageFormatPolicy = ImageFormatPolicy(rawValue: savedImgFormat) ?? .preserveOriginal
+        self.imageFormatPolicy = ImageFormatPolicy(rawValue: savedImgFormat).flatMap { ImageFormatPolicy.available.contains($0) ? $0 : nil } ?? .preserveOriginal
         
         let savedImgPreset = UserDefaults.standard.string(forKey: Keys.imageQualityPreset) ?? ""
         self.imageQualityPreset = QualityPreset(rawValue: savedImgPreset) ?? .visuallyLossless
@@ -833,42 +833,61 @@ public final class AppState: ObservableObject {
             let config = currentConfiguration()
             Task {
                 // Encoding a large screenshot takes seconds, so it runs off the main actor.
-                let outcome = await Task.detached(priority: .userInitiated) { () -> (result: CompressionResult, data: Data)? in
-                    let tempSource = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard_temp_\(UUID().uuidString).png")
-                    let tempDest = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard_squeezed_\(UUID().uuidString).\(AcceleratedImageCompressor().outputExtension(for: tempSource, config: config))")
-                    do {
+                let outcome = await Task.detached(priority: .userInitiated) { () -> Result<(result: CompressionResult, data: Data), Error> in
+                    Result {
+                        let folder = try Self.freshClipboardFolder()
+                        let tempSource = folder.appendingPathComponent("Clipboard.png")
+                        let tempDest = folder.appendingPathComponent("Clipboard_min.\(AcceleratedImageCompressor().outputExtension(for: tempSource, config: config))")
                         try imgData.write(to: tempSource)
-                        let originalSize = Int64(imgData.count)
                         let startTime = Date()
-                        
                         try AcceleratedImageCompressor().compressImage(from: tempSource, to: tempDest, config: config)
                         let compressedData = try Data(contentsOf: tempDest)
                         let result = CompressionResult(
                             originalURL: tempSource,
                             outputURL: tempDest,
-                            originalSize: originalSize,
+                            originalSize: Int64(imgData.count),
                             compressedSize: Int64(compressedData.count),
                             duration: Date().timeIntervalSince(startTime),
                             mediaType: .image
                         )
                         return (result, compressedData)
-                    } catch {
-                        print("Clipboard squeeze failed: \(error)")
-                        return nil
                     }
                 }.value
                 
-                guard let outcome else { return }
-                
-                // Write compressed data back to clipboard
-                pasteboard.clearContents()
-                if let compressedImage = NSImage(data: outcome.data) {
-                    pasteboard.writeObjects([compressedImage, outcome.result.outputURL as NSURL])
+                switch outcome {
+                case .failure(let error):
+                    recordFailure(fileName: String(localized: "Clipboard image"), message: error.localizedDescription)
+                case .success(let outcome):
+                    // Write compressed data back to clipboard
+                    pasteboard.clearContents()
+                    if let compressedImage = NSImage(data: outcome.data) {
+                        pasteboard.writeObjects([compressedImage, outcome.result.outputURL as NSURL])
+                    }
+                    recordResult(outcome.result)
+                    triggerSuccessBadge()
                 }
-                
-                recordResult(outcome.result)
-                triggerSuccessBadge()
             }
+        }
+    }
+    
+    /// Clipboard squeezes are kept in one folder that only ever holds the latest pair, since copied screenshots can be private.
+    /// The latest output stays on disk because the clipboard also carries it as a file.
+    nonisolated static let clipboardFolder = FileManager.default.temporaryDirectory.appendingPathComponent("SqueezeBar Clipboard", isDirectory: true)
+    
+    nonisolated private static func freshClipboardFolder() throws -> URL {
+        try? FileManager.default.removeItem(at: clipboardFolder)
+        try FileManager.default.createDirectory(at: clipboardFolder, withIntermediateDirectories: true)
+        return clipboardFolder
+    }
+    
+    /// Run at launch: removes the last clipboard pair, plus the loose files earlier versions left in the temp folder.
+    nonisolated public static func removeClipboardFiles() {
+        let fm = FileManager.default
+        try? fm.removeItem(at: clipboardFolder)
+        let temp = fm.temporaryDirectory
+        for name in (try? fm.contentsOfDirectory(atPath: temp.path)) ?? []
+        where name.hasPrefix("clipboard_temp_") || name.hasPrefix("clipboard_squeezed_") {
+            try? fm.removeItem(at: temp.appendingPathComponent(name))
         }
     }
     
@@ -900,7 +919,7 @@ public final class AppState: ObservableObject {
                 recordResult(result)
             } else {
                 jobs.activeJobs[idx].statusText = error ?? String(localized: "Failed")
-                if let error, error != "Cancelled" {
+                if let error, error != "Cancelled", error != MediaCompressionEngine.alreadyOptimizedMessage {
                     recordFailure(fileName: jobs.activeJobs[idx].fileURL.lastPathComponent, message: error)
                 }
             }
