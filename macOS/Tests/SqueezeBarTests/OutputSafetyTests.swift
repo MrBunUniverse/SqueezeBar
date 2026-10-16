@@ -42,6 +42,14 @@ final class DestinationNamingTests: XCTestCase {
         XCTAssertEqual(out.lastPathComponent, "clip (1).mp4")
     }
 
+    func testTypedNamePartsCannotLeaveTheFolder() {
+        XCTAssertEqual(MediaCompressionEngine.outputSuffix("/../../x"), "....x")
+        XCTAssertEqual(MediaCompressionEngine.outputSuffix("a:b\n"), "ab")
+        XCTAssertEqual(MediaCompressionEngine.outputSuffix("//"), "_min")
+        let out = MediaCompressionEngine.uniqueDestinationURL(folder: dir, baseName: "clip", suffix: MediaCompressionEngine.outputSuffix("/../../x"), extension: "mp4", sourceURL: dir.appendingPathComponent("clip.mp4"))
+        XCTAssertEqual(out.deletingLastPathComponent().standardizedFileURL, dir.standardizedFileURL)
+    }
+
     func testVideoCompressorRefusesToOverwriteSource() async throws {
         let src = dir.appendingPathComponent("clip.mp4")
         let payload = Data("original".utf8)
@@ -102,6 +110,15 @@ final class BatchRenameTests: XCTestCase {
         XCTAssertEqual(AppState.shared.recentResults[0].outputURL, new)
         XCTAssertTrue(FileManager.default.fileExists(atPath: new.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("a_min.jpg").path))
+    }
+
+    func testRenamePatternCannotLeaveTheFolder() throws {
+        let r = try makeResult("a_min.jpg")
+        AppState.shared.recentResults = [r]
+        AppState.shared.batchRenameResults(ids: [r.id], pattern: "../../Trip_#")
+        XCTAssertEqual(AppState.shared.recentResults[0].outputURL, dir.appendingPathComponent("....Trip_1.jpg"))
+        AppState.shared.batchRenameResults(ids: [r.id], pattern: "..")
+        XCTAssertEqual(AppState.shared.recentResults[0].outputURL, dir.appendingPathComponent("....Trip_1.jpg"))
     }
 
     func testRenameDoesNotOverwriteExistingFileAndKeepsHistoryValid() throws {

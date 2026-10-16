@@ -729,9 +729,12 @@ public final class AppState: ObservableObject {
     public func batchRenameResults(ids: Set<UUID>, pattern: String) {
         // Pattern format: e.g. "Homerenovation_#", "Project_{index}", or "CustomPrefix_#"
         // If pattern contains '#' or '{index}' or '{i}', replace with sequential index 1, 2, 3...
+        // A pattern like "../x" or "a/b" must not move files out of their folder.
+        let pattern = MediaCompressionEngine.safeNamePart(pattern)
+        guard !pattern.trimmingCharacters(in: CharacterSet(charactersIn: " .")).isEmpty else { return }
         var index = 1
         let fm = FileManager.default
-        
+
         for i in 0..<recentResults.count {
             guard ids.contains(recentResults[i].id) else { continue }
             let originalItem = recentResults[i]

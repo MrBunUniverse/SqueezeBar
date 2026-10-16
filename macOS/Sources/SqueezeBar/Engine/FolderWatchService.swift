@@ -71,7 +71,7 @@ public final class FolderWatchService: @unchecked Sendable {
             self.knownFiles = currentSet
             
             let config = await AppState.shared.currentConfiguration()
-            let suffix = config.suffix.isEmpty ? "_min" : config.suffix
+            let suffix = MediaCompressionEngine.outputSuffix(config.suffix)
             
             var candidates: [URL] = []
             for item in newItems {
