@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 # ==============================================================================
 
 APP_NAME="SqueezeBar"
-VERSION="1.1.0"
+VERSION="1.2.0"
 # Fixed name so github.com/<repo>/releases/latest/download/SqueezeBar.dmg always resolves.
 OUTPUT_DMG="${APP_NAME}.dmg"
 
