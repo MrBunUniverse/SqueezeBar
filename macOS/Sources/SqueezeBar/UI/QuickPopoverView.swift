@@ -30,6 +30,8 @@ private func loadDroppedFileURLs(from providers: [NSItemProvider], completion: @
 
 public struct QuickPopoverView: View {
     @EnvironmentObject var state: AppState
+    // Shows job progress (header, activity list), so it has to observe the job board directly.
+    @ObservedObject private var jobs = AppState.shared.jobs
     public var isDetachedWindow: Bool = false
     @State private var selectedTab: PopoverTab = .activity
     @State private var isWindowDropTargeted: Bool = false
@@ -758,7 +760,8 @@ public struct QuickPopoverView: View {
     }
 
     private var recentHistorySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Lazy: a history of 50 results would otherwise build 50 rows and 50 thumbnail tasks on open.
+        LazyVStack(alignment: .leading, spacing: 8) {
             if !(state.recentResults.isEmpty && state.customFolders.isEmpty) {
                 compactDropStrip
             }
@@ -2785,7 +2788,7 @@ public struct QuickPopoverView: View {
     // MARK: - Footer
     private var footerView: some View {
         HStack {
-            Text("SqueezeBar v1.1.0 • SirJameTV")
+            Text("SqueezeBar v1.2.0 • SirJameTV")
                 .font(.system(size: 10.5, design: .rounded))
                 .foregroundColor(.secondary)
             
@@ -3319,8 +3322,10 @@ struct LiquidGlassSlider: View {
                             dragPercentage = CGFloat(newPct)
                         }
                         var newValue = range.lowerBound + newPct * (range.upperBound - range.lowerBound)
-                        if let step = step, step > 0 {
-                            newValue = (newValue / step).rounded() * step
+                        // Continuous sliders store 1% steps: each write re-renders everything observing AppState.
+                        let quantum = step ?? (range.upperBound - range.lowerBound) / 100
+                        if quantum > 0 {
+                            newValue = (newValue / quantum).rounded() * quantum
                         }
                         newValue = min(max(newValue, range.lowerBound), range.upperBound)
                         if newValue != value {

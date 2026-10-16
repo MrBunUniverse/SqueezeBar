@@ -73,7 +73,7 @@ public final class FolderWatchService: @unchecked Sendable {
             let config = await AppState.shared.currentConfiguration()
             let suffix = config.suffix.isEmpty ? "_min" : config.suffix
             
-            var urlsToProcess: [URL] = []
+            var candidates: [URL] = []
             for item in newItems {
                 if item.hasPrefix(".") || item.contains(suffix) || item.hasPrefix("clipboard_") {
                     continue
@@ -81,29 +81,40 @@ public final class FolderWatchService: @unchecked Sendable {
                 
                 let itemURL = URL(fileURLWithPath: path).appendingPathComponent(item)
                 if MediaType.classify(url: itemURL) != .unsupported {
-                    // Skip files still being copied in; wait for a stable size first
-                    if await Self.waitUntilStable(itemURL), !Task.isCancelled {
-                        urlsToProcess.append(itemURL)
-                    }
+                    candidates.append(itemURL)
                 }
             }
             
-            if !urlsToProcess.isEmpty {
+            // Skip files still being copied in; one wait covers the whole batch.
+            let urlsToProcess = await Self.waitUntilStable(candidates)
+            if !urlsToProcess.isEmpty, !Task.isCancelled {
                 await MediaCompressionEngine.shared.processDroppedURLs(urlsToProcess)
             }
         }
     }
 
-    /// Polls until the file's size stops changing (copy finished). Gives up after ~2 minutes.
-    private static func waitUntilStable(_ url: URL) async -> Bool {
-        var lastSize: Int64 = -1
+    /// Polls all files together until their sizes stop changing (copy finished). Returns the stable ones; gives up after ~2 minutes.
+    private static func waitUntilStable(_ urls: [URL]) async -> [URL] {
+        var pending = urls
+        var lastSizes: [URL: Int64] = [:]
+        var ready: [URL] = []
         for _ in 0..<120 {
-            guard !Task.isCancelled else { return false }
-            guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64 else { return false }
-            if size == lastSize { return true }
-            lastSize = size
+            guard !Task.isCancelled, !pending.isEmpty else { break }
+            var stillChanging: [URL] = []
+            for url in pending {
+                // A file that vanished is dropped; one still growing waits for the next sample.
+                guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64 else { continue }
+                if lastSizes[url] == size {
+                    ready.append(url)
+                } else {
+                    lastSizes[url] = size
+                    stillChanging.append(url)
+                }
+            }
+            pending = stillChanging
+            if pending.isEmpty { break }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
-        return false
+        return ready
     }
 }

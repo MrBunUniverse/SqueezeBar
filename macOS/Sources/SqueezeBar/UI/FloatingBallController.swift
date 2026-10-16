@@ -23,23 +23,17 @@ public final class LiquidBallModel: ObservableObject {
     private var tuckTimerTask: Task<Void, Never>?
     
     public func applyMotionVelocity(dx: CGFloat, dy: CGFloat) {
-        isMoving = true
-        isTucked = false
+        // Only publish on real changes: every @Published set re-renders the ball, even when the value is the same.
+        if !isMoving { isMoving = true }
+        if isTucked { isTucked = false }
         cancelTuckTimer()
-        
+
         let speed = sqrt(dx * dx + dy * dy)
         let intensity = min(1.0, speed / 20.0)
         let absDx = abs(dx)
         let absDy = abs(dy)
-        let style = AppState.shared.dropBallAnimationStyle
-        
-        let stretchFactor: CGFloat
-        switch style {
-        case .calm: stretchFactor = 0.12
-        case .standard: stretchFactor = 0.24
-        case .exaggerated: stretchFactor = 0.42
-        }
-        
+        let stretchFactor: CGFloat = 0.42
+
         var targetScaleX: CGFloat = 1.0
         var targetScaleY: CGFloat = 1.0
         var targetAngle: Double = 0.0
@@ -65,13 +59,7 @@ public final class LiquidBallModel: ObservableObject {
     
     public func releaseMotion() {
         isMoving = false
-        let spring: Animation
-        switch AppState.shared.dropBallAnimationStyle {
-        case .calm: spring = .spring(response: 0.38, dampingFraction: 0.82)
-        case .standard: spring = .spring(response: 0.35, dampingFraction: 0.60, blendDuration: 0.05)
-        case .exaggerated: spring = .spring(response: 0.42, dampingFraction: 0.42, blendDuration: 0.08)
-        }
-        withAnimation(spring) {
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.42, blendDuration: 0.08)) {
             self.scaleX = 1.0
             self.scaleY = 1.0
             self.rotationAngle = 0.0
@@ -80,13 +68,7 @@ public final class LiquidBallModel: ObservableObject {
     
     public func revealFromTuck() {
         cancelTuckTimer()
-        let spring: Animation
-        switch AppState.shared.dropBallAnimationStyle {
-        case .calm: spring = .spring(response: 0.38, dampingFraction: 0.82)
-        case .standard: spring = .spring(response: 0.35, dampingFraction: 0.58, blendDuration: 0.05)
-        case .exaggerated: spring = .spring(response: 0.40, dampingFraction: 0.44, blendDuration: 0.08)
-        }
-        withAnimation(spring) {
+        withAnimation(.spring(response: 0.40, dampingFraction: 0.44, blendDuration: 0.08)) {
             self.isTucked = false
         }
     }
@@ -97,13 +79,7 @@ public final class LiquidBallModel: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(afterSeconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             if !self.isMoving && !AppState.shared.isProcessing && !self.isHovered {
-                let spring: Animation
-                switch AppState.shared.dropBallAnimationStyle {
-                case .calm: spring = .spring(response: 0.45, dampingFraction: 0.88)
-                case .standard: spring = .spring(response: 0.40, dampingFraction: 0.72)
-                case .exaggerated: spring = .spring(response: 0.44, dampingFraction: 0.56)
-                }
-                withAnimation(spring) {
+                withAnimation(.spring(response: 0.44, dampingFraction: 0.56)) {
                     self.isTucked = true
                 }
             }
@@ -127,19 +103,8 @@ public final class FloatingBallHostingView: NSHostingView<FloatingBallView> {
         let model = LiquidBallModel.shared
         let state = AppState.shared
         let isTucked = model.isTucked && !model.isHovered && !state.isProcessing && !model.isMoving
-        let hoverScale: CGFloat
-        let popoutOffset: CGFloat
-        switch state.dropBallAnimationStyle {
-        case .calm:
-            hoverScale = 1.04
-            popoutOffset = 10
-        case .standard:
-            hoverScale = 1.08
-            popoutOffset = 16
-        case .exaggerated:
-            hoverScale = 1.15
-            popoutOffset = 22
-        }
+        let hoverScale: CGFloat = 1.15
+        let popoutOffset: CGFloat = 22
 
         let offset = model.isMoving ? 0 : (isTucked ? FloatingBallController.tuckedOffset : -popoutOffset) * (model.dockEdge == .right ? 1 : -1)
         let scaleX = (isTucked ? FloatingBallController.tuckedScaleX : (model.isHovered ? hoverScale : 1)) * model.scaleX
@@ -364,10 +329,6 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
         panel.contentView = hostingView
         
         self.ballPanel = panel
-    }
-    
-    public func windowDidMove(_ notification: Notification) {
-        saveCurrentPosition()
     }
     
     private func calculateInitialFrame() -> NSRect {

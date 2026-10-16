@@ -56,8 +56,8 @@ public final class StatusItemDropView: NSView {
         
         // Observe AppState
         Publishers.CombineLatest3(
-            AppState.shared.$isProcessing,
-            AppState.shared.$overallProgress,
+            AppState.shared.jobs.$isProcessing,
+            AppState.shared.jobs.$overallProgress,
             AppState.shared.$showSuccessBadge
         )
         .receive(on: DispatchQueue.main)
@@ -76,6 +76,8 @@ public final class StatusItemDropView: NSView {
     }
     
     private var isHoveringDrag: Bool = false
+    /// Set once on draggingEntered; draggingUpdated fires many times a second and shouldn't re-read the pasteboard.
+    private var dragHasMediaFiles = false
     
     // MARK: - Mouse Click Handling
     public override func mouseDown(with event: NSEvent) {
@@ -96,7 +98,8 @@ public final class StatusItemDropView: NSView {
     
     // MARK: - NSDraggingDestination
     public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard hasValidMediaFiles(in: sender) else {
+        dragHasMediaFiles = hasValidMediaFiles(in: sender)
+        guard dragHasMediaFiles else {
             return []
         }
         
@@ -105,9 +108,8 @@ public final class StatusItemDropView: NSView {
     }
     
     public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        let isValid = hasValidMediaFiles(in: sender)
-        if isValid { beginDragHover() }
-        return isValid ? .copy : []
+        if dragHasMediaFiles { beginDragHover() }
+        return dragHasMediaFiles ? .copy : []
     }
     
     public override func draggingEnded(_ sender: NSDraggingInfo) {

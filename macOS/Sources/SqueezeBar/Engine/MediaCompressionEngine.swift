@@ -57,43 +57,84 @@ public actor MediaCompressionEngine {
         activeDestinationURLs.removeValue(forKey: id)
     }
     
+    /// A job that has its row in AppState and is ready to run.
+    private struct PendingJob {
+        let url: URL
+        let mediaType: MediaType
+        let jobId: UUID
+        let originalSize: Int64
+        let config: CompressionConfiguration
+    }
+    
     // MARK: - Staged Queue Processing Entry Point (Per-File Custom Configurations)
     public func processStagedItems(_ items: [StagedQueueItem], targetFolderId: UUID? = nil) async {
         guard !items.isEmpty else { return }
         
         let baseConfig = await AppState.shared.currentConfiguration()
-        var jobsToRun: [(url: URL, type: MediaType, jobId: UUID, origSize: Int64, config: CompressionConfiguration)] = []
-        
+        var jobs: [PendingJob] = []
         for item in items {
             let mediaType = item.mediaType
             guard mediaType != .unsupported else { continue }
             
             let originalSize = item.originalSize > 0 ? item.originalSize : fileSize(of: item.fileURL)
-            let jobId = UUID()
             let itemConfig = item.buildConfiguration(baseConfig: baseConfig)
-            
-            let job = CompressionJob(
-                id: jobId,
-                fileURL: item.fileURL,
-                mediaType: mediaType,
-                progress: 0.0,
-                statusText: String(localized: "Queued")
-            )
-            
-            _ = JobControlRegistry.shared.control(for: jobId)
-            await AppState.shared.addJob(job)
-            jobsToRun.append((url: item.fileURL, type: mediaType, jobId: jobId, origSize: originalSize, config: itemConfig))
+            let pending = await registerJob(url: item.fileURL, mediaType: mediaType, originalSize: originalSize, config: itemConfig)
+            jobs.append(pending)
         }
         
-        guard !jobsToRun.isEmpty else { return }
+        await runJobs(jobs, targetFolderId: targetFolderId)
+    }
+    
+    // MARK: - Batch Processing Entry Point
+    public func processDroppedURLs(_ urls: [URL], targetFolderId: UUID? = nil) async {
+        // 1. Gather all individual media files (recursively expanding folders)
+        let resolvedFiles = gatherMediaFiles(from: urls)
+        guard !resolvedFiles.isEmpty else { return }
         
+        // 2. Fetch current config from main actor
+        let config = await AppState.shared.currentConfiguration()
+        
+        // 3. Register jobs in AppState
+        var jobs: [PendingJob] = []
+        for url in resolvedFiles {
+            let mediaType = MediaType.classify(url: url)
+            guard mediaType != .unsupported else { continue }
+            
+            let pending = await registerJob(url: url, mediaType: mediaType, originalSize: fileSize(of: url), config: config)
+            jobs.append(pending)
+        }
+        
+        await runJobs(jobs, targetFolderId: targetFolderId)
+    }
+    
+    private func registerJob(url: URL, mediaType: MediaType, originalSize: Int64, config: CompressionConfiguration) async -> PendingJob {
+        let jobId = UUID()
+        let job = CompressionJob(
+            id: jobId,
+            fileURL: url,
+            mediaType: mediaType,
+            progress: 0.0,
+            statusText: String(localized: "Queued")
+        )
+        
+        _ = JobControlRegistry.shared.control(for: jobId)
+        await AppState.shared.addJob(job)
+        return PendingJob(url: url, mediaType: mediaType, jobId: jobId, originalSize: originalSize, config: config)
+    }
+    
+    private func runJobs(_ jobs: [PendingJob], targetFolderId: UUID?) async {
+        guard !jobs.isEmpty else { return }
+        
+        // Adaptive hardware concurrency tuned for Apple Silicon Media Engines:
+        // - 8GB M1/M2: 2 concurrent heavy transcode tasks to prevent memory paging & keep unified memory cool
+        // - 16GB+ M1/M2/M3/M4 Pro/Max: 3-4 concurrent streams for maximum hardware encoder throughput
         let cores = ProcessInfo.processInfo.activeProcessorCount
-        let maxConcurrent: Int = max(2, min(cores <= 8 ? 2 : 4, jobsToRun.count))
+        let maxConcurrent: Int = max(2, min(cores <= 8 ? 2 : 4, jobs.count))
         
         var anySucceeded = false
         await withTaskGroup(of: Bool.self) { group in
             var running = 0
-            for item in jobsToRun {
+            for item in jobs {
                 if running >= maxConcurrent {
                     if let res = await group.next(), res { anySucceeded = true }
                     running -= 1
@@ -104,9 +145,9 @@ public actor MediaCompressionEngine {
                     let task = Task {
                         await self.processSingleFile(
                             url: item.url,
-                            mediaType: item.type,
+                            mediaType: item.mediaType,
                             jobId: item.jobId,
-                            originalSize: item.origSize,
+                            originalSize: item.originalSize,
                             config: item.config,
                             targetFolderId: targetFolderId
                         )
@@ -123,83 +164,7 @@ public actor MediaCompressionEngine {
             }
         }
         
-        if anySucceeded {
-            await AppState.shared.triggerSuccessBadge()
-        }
-    }
-    
-    // MARK: - Batch Processing Entry Point
-    public func processDroppedURLs(_ urls: [URL], targetFolderId: UUID? = nil) async {
-        // 1. Gather all individual media files (recursively expanding folders)
-        let resolvedFiles = gatherMediaFiles(from: urls)
-        guard !resolvedFiles.isEmpty else { return }
-        
-        // 2. Fetch current config from main actor
-        let config = await AppState.shared.currentConfiguration()
-        
-        // 3. Register jobs in AppState
-        var jobsToRun: [(url: URL, type: MediaType, jobId: UUID, origSize: Int64)] = []
-        for url in resolvedFiles {
-            let mediaType = MediaType.classify(url: url)
-            guard mediaType != .unsupported else { continue }
-            
-            let originalSize = fileSize(of: url)
-            let jobId = UUID()
-            let job = CompressionJob(
-                id: jobId,
-                fileURL: url,
-                mediaType: mediaType,
-                progress: 0.0,
-                statusText: String(localized: "Queued")
-            )
-            
-            _ = JobControlRegistry.shared.control(for: jobId)
-            await AppState.shared.addJob(job)
-            jobsToRun.append((url: url, type: mediaType, jobId: jobId, origSize: originalSize))
-        }
-        
-        guard !jobsToRun.isEmpty else { return }
-        
-        // 4. Adaptive hardware concurrency tuned for Apple Silicon Media Engines:
-        // - 8GB M1/M2: 2 concurrent heavy transcode tasks to prevent memory paging & keep unified memory cool
-        // - 16GB+ M1/M2/M3/M4 Pro/Max: 3-4 concurrent streams for maximum hardware encoder throughput
-        let cores = ProcessInfo.processInfo.activeProcessorCount
-        let maxConcurrent: Int = max(2, min(cores <= 8 ? 2 : 4, jobsToRun.count))
-        
-        var anySucceeded = false
-        await withTaskGroup(of: Bool.self) { group in
-            var running = 0
-            for item in jobsToRun {
-                if running >= maxConcurrent {
-                    if let res = await group.next(), res { anySucceeded = true }
-                    running -= 1
-                }
-                
-                running += 1
-                group.addTask {
-                    let task = Task {
-                        await self.processSingleFile(
-                            url: item.url,
-                            mediaType: item.type,
-                            jobId: item.jobId,
-                            originalSize: item.origSize,
-                            config: config,
-                            targetFolderId: targetFolderId
-                        )
-                    }
-                    await self.registerJobTask(id: item.jobId, task: task)
-                    await task.value
-                    await self.unregisterJobTask(id: item.jobId)
-                    return true
-                }
-            }
-            
-            for await res in group {
-                if res { anySucceeded = true }
-            }
-        }
-        
-        // 5. Trigger success feedback on UI if jobs finished without total cancellation
+        // Trigger success feedback on UI if jobs finished without total cancellation
         if anySucceeded {
             await AppState.shared.triggerSuccessBadge()
         }
@@ -227,7 +192,9 @@ public actor MediaCompressionEngine {
             }
         }
         
-        let origDim = await probeDimensions(for: url, mediaType: mediaType)
+        // Videos are probed and encoded from one asset, so the source's tracks are parsed once.
+        let sourceAsset = mediaType == .video ? AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]) : nil
+        let origDim = await probeDimensions(for: url, mediaType: mediaType, preloadedAsset: sourceAsset)
         let startTime = Date()
         var destinationURL = generateDestinationURL(for: url, mediaType: mediaType, config: config)
         activeDestinationURLs[jobId] = destinationURL
@@ -243,6 +210,7 @@ public actor MediaCompressionEngine {
                 destinationURL: destinationURL,
                 mediaType: mediaType,
                 config: config,
+                sourceAsset: sourceAsset,
                 jobId: jobId
             )
         } catch {
@@ -269,6 +237,7 @@ public actor MediaCompressionEngine {
                     destinationURL: destinationURL,
                     mediaType: mediaType,
                     config: config,
+                    sourceAsset: sourceAsset,
                     jobId: jobId
                 )
             } catch {
@@ -314,6 +283,7 @@ public actor MediaCompressionEngine {
         destinationURL: URL,
         mediaType: MediaType,
         config: CompressionConfiguration,
+        sourceAsset: AVURLAsset?,
         jobId: UUID
     ) async throws {
         let gate = ProgressGate()
@@ -337,7 +307,8 @@ public actor MediaCompressionEngine {
                 from: sourceURL,
                 to: destinationURL,
                 config: config,
-                control: control
+                control: control,
+                preloadedAsset: sourceAsset
             ) { progress in
                 guard gate.shouldReport(progress) else { return }
                 Task { @MainActor in
@@ -456,7 +427,7 @@ public actor MediaCompressionEngine {
     }
     
     // MARK: - Modern Async Dimension & Format Probing (Zero Main Thread Stalls)
-    private func probeDimensions(for url: URL, mediaType: MediaType) async -> String? {
+    private func probeDimensions(for url: URL, mediaType: MediaType, preloadedAsset: AVURLAsset? = nil) async -> String? {
         switch mediaType {
         case .image:
             guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -467,7 +438,7 @@ public actor MediaCompressionEngine {
             }
             return nil
         case .video:
-            let asset = AVURLAsset(url: url)
+            let asset = preloadedAsset ?? AVURLAsset(url: url)
             if let tracks = try? await asset.loadTracks(withMediaType: .video), let track = tracks.first {
                 var infoParts: [String] = []
                 

@@ -60,7 +60,7 @@ struct SqueezeWaveMark: View {
         if reduceMotion {
             marks(time: nil)
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { context in
                 marks(time: context.date.timeIntervalSinceReferenceDate)
             }
         }

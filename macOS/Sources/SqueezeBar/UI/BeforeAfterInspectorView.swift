@@ -950,6 +950,7 @@ private final class SynchronizedAudioEngine: ObservableObject {
     }
     
     private var timeObserverToken: Any?
+    private var endObserver: NSObjectProtocol?
     
     var formattedCurrentTime: String {
         formatTime(currentTimeSeconds)
@@ -1002,7 +1003,7 @@ private final class SynchronizedAudioEngine: ObservableObject {
             }
         }
         
-        NotificationCenter.default.addObserver(
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: p2.currentItem,
             queue: .main
@@ -1057,6 +1058,10 @@ private final class SynchronizedAudioEngine: ObservableObject {
             compressedPlayer?.removeTimeObserver(token)
             timeObserverToken = nil
         }
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
         originalPlayer = nil
         compressedPlayer = nil
     }
@@ -1085,6 +1090,7 @@ private final class SynchronizedVideoEngine: ObservableObject {
     }
     
     private var timeObserverToken: Any?
+    private var endObserver: NSObjectProtocol?
     
     var formattedCurrentTime: String {
         formatTime(currentTimeSeconds)
@@ -1137,7 +1143,7 @@ private final class SynchronizedVideoEngine: ObservableObject {
         }
         
         // Loop when video reaches end
-        NotificationCenter.default.addObserver(
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: compItem,
             queue: .main
@@ -1189,6 +1195,10 @@ private final class SynchronizedVideoEngine: ObservableObject {
         if let token = timeObserverToken {
             compressedPlayer?.removeTimeObserver(token)
             timeObserverToken = nil
+        }
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
         }
         originalPlayer = nil
         compressedPlayer = nil
