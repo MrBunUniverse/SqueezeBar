@@ -10,6 +10,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ensure the app operates strictly as an accessory utility without a dock icon
         NSApp.setActivationPolicy(.accessory)
         
+        Task.detached(priority: .utility) { AppState.removeClipboardFiles() }
+        
         // Register for macOS Services provider
         NSApp.servicesProvider = self
         
@@ -31,6 +33,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         if !UserDefaults.standard.bool(forKey: WelcomeWindowController.completedKey) {
             welcome.show()
         }
+    }
+
+    /// Quitting mid-encode: stop the jobs and give them a moment to delete their partial files first.
+    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard AppState.shared.isProcessing else { return .terminateNow }
+        AppState.shared.cancelAllJobs()
+        Task {
+            await MediaCompressionEngine.shared.waitUntilIdle(timeout: 3)
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     public func applicationWillTerminate(_ notification: Notification) {

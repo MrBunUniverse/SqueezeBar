@@ -62,7 +62,8 @@ final class SqueezeBarTests: XCTestCase {
         
         var configWebP = CompressionConfiguration()
         configWebP.imageFormatPolicy = .webpModern
-        XCTAssertEqual(compressor.outputExtension(for: sampleURL, config: configWebP), "webp")
+        // macOS can read WebP but not write it; without an encoder the output falls back to JPEG.
+        XCTAssertEqual(compressor.outputExtension(for: sampleURL, config: configWebP), AcceleratedImageCompressor.canWrite(.webP) ? "webp" : "jpg")
         
         var configAVIF = CompressionConfiguration()
         configAVIF.imageFormatPolicy = .avifModern

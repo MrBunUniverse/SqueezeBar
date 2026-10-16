@@ -39,8 +39,7 @@ public struct AcceleratedImageCompressor: Sendable {
     ///   Instead we use two levers that *do* reduce PNG size:
     ///     1. Resolution downscaling (controlled by quality slider)
     ///     2. Strip alpha channel when opaque (saves ~25% raw data)
-    ///   At Max Compression we additionally convert the image to JPEG-in-PNG
-    ///   (re-encode as JPEG and wrap back — keeping .png extension but lossy).
+    ///   The bytes written always match the file's extension: a PNG never becomes JPEG data behind a .png name.
     public func compressImage(
         from sourceURL: URL,
         to destinationURL: URL,
@@ -89,19 +88,9 @@ public struct AcceleratedImageCompressor: Sendable {
         // 4. Build output
         let mutableData = CFDataCreateMutable(kCFAllocatorDefault, 0)!
         
-        // For PNG at Max Compression, we re-encode internally as JPEG then wrap
-        // the bytes with .png extension — this is the only way to get real lossy
-        // compression while keeping the .png filename the user expects.
-        let actualOutputType: UTType
-        if isPNG && strategy.useJPEGFallback && config.imageFormatPolicy != .pngLossless {
-            actualOutputType = .jpeg
-        } else {
-            actualOutputType = targetUTType
-        }
-        
         guard let destination = CGImageDestinationCreateWithData(
             mutableData,
-            actualOutputType.identifier as CFString,
+            targetUTType.identifier as CFString,
             frameCount,
             nil
         ) else {
@@ -199,11 +188,6 @@ public struct AcceleratedImageCompressor: Sendable {
         /// For PNG the encoder ignores it, but we set it anyway.
         let encoderQuality: Double
         
-        /// If true and output is PNG, we actually encode as JPEG internally
-        /// (the file gets .png extension but JPEG bytes — this is the only way
-        /// to get real lossy compression for a "Preserve Original" PNG workflow).
-        let useJPEGFallback: Bool
-        
         /// Human-readable label for debugging.
         let label: String
     }
@@ -232,7 +216,6 @@ public struct AcceleratedImageCompressor: Sendable {
                 return Strategy(
                     maxDimension: nil,
                     encoderQuality: 0.95,
-                    useJPEGFallback: false,
                     label: "already under target size"
                 )
             }
@@ -258,29 +241,16 @@ public struct AcceleratedImageCompressor: Sendable {
                 return Strategy(
                     maxDimension: maxDim,
                     encoderQuality: calculatedQ,
-                    useJPEGFallback: false,
                     label: "targetSize lossy q=\(calculatedQ)"
                 )
             } else if isPNG {
-                if ratio < 0.60 || preserveResolution {
-                    let calculatedQ = min(0.85, max(0.15, ratio * 0.65))
-                    let maxDim: CGFloat? = preserveResolution ? nil : ((ratio < 0.30 && longEdge > 2560) ? 2560 : ((ratio < 0.15 && longEdge > 1920) ? 1920 : nil))
-                    return Strategy(
-                        maxDimension: maxDim,
-                        encoderQuality: calculatedQ,
-                        useJPEGFallback: true,
-                        label: "targetSize png-jpeg q=\(calculatedQ)"
-                    )
-                } else {
-                    let scale = min(1.0, max(0.30, sqrt(ratio)))
-                    let maxDim = longEdge * scale
-                    return Strategy(
-                        maxDimension: maxDim,
-                        encoderQuality: 1.0,
-                        useJPEGFallback: false,
-                        label: "targetSize png downscale"
-                    )
-                }
+                // PNG is lossless, so the only lever is resolution. Pick JPEG or HEIC output for real lossy savings.
+                let scale = min(1.0, max(0.30, sqrt(ratio)))
+                return Strategy(
+                    maxDimension: preserveResolution ? nil : longEdge * scale,
+                    encoderQuality: 1.0,
+                    label: "targetSize png downscale"
+                )
             }
         }
         
@@ -298,7 +268,6 @@ public struct AcceleratedImageCompressor: Sendable {
             return Strategy(
                 maxDimension: maxDim,
                 encoderQuality: quality,
-                useJPEGFallback: false,
                 label: "lossy-direct q=\(quality)"
             )
         }
@@ -310,7 +279,6 @@ public struct AcceleratedImageCompressor: Sendable {
                 return Strategy(
                     maxDimension: nil,
                     encoderQuality: 1.0,
-                    useJPEGFallback: false,
                     label: "png-lossless"
                 )
             }
@@ -321,20 +289,16 @@ public struct AcceleratedImageCompressor: Sendable {
                 return Strategy(
                     maxDimension: targetLong,
                     encoderQuality: 1.0,
-                    useJPEGFallback: false,
                     label: "png-balanced-downscale"
                 )
             }
             
-            // Max Compression (quality < 0.65): re-encode as JPEG internally
-            let jpegQ = 0.40 + (quality - 0.30) * (0.70 - 0.40) / (0.64 - 0.30)
-            let clampedJpegQ = min(max(jpegQ, 0.35), 0.75)
+            // Max Compression (quality < 0.65): downscale further, still PNG
             let targetLong: CGFloat = longEdge > 2560 ? 2560 : CGFloat(longEdge)
             return Strategy(
                 maxDimension: targetLong,
-                encoderQuality: clampedJpegQ,
-                useJPEGFallback: true,
-                label: "png-maxcompress-jpeg q=\(clampedJpegQ)"
+                encoderQuality: 1.0,
+                label: "png-maxcompress-downscale"
             )
         }
         
@@ -342,7 +306,6 @@ public struct AcceleratedImageCompressor: Sendable {
         return Strategy(
             maxDimension: quality <= 0.60 ? 2048 : nil,
             encoderQuality: quality,
-            useJPEGFallback: false,
             label: "other q=\(quality)"
         )
     }
@@ -351,51 +314,39 @@ public struct AcceleratedImageCompressor: Sendable {
     // MARK: - TARGET TYPE RESOLUTION
     // ==========================================================================
     
-    public func determineTargetUTType(for sourceURL: URL, config: CompressionConfiguration) -> UTType {
-        let ext = sourceURL.pathExtension.lowercased()
-        
-        switch config.imageFormatPolicy {
-        case .heicModern:
-            return .heic
-        case .webpModern:
-            return UTType.webP
-        case .avifModern:
-            return UTType(tag: "avif", tagClass: .filenameExtension, conformingTo: .image) ?? .heic
-        case .jpegStandard:
-            return .jpeg
-        case .pngLossless:
-            return .png
-        case .preserveOriginal:
-            switch ext {
-            case "jpg", "jpeg":  return .jpeg
-            case "png":          return .png
-            case "heic", "heif": return .heic
-            case "webp":         return UTType.webP
-            case "avif":         return UTType(tag: "avif", tagClass: .filenameExtension, conformingTo: .image) ?? .heic
-            case "gif":          return .gif
-            case "tif", "tiff":  return .tiff
-            case "bmp":          return .bmp
-            default:
-                if let utType = UTType(filenameExtension: ext),
-                   utType.conforms(to: .image) {
-                    let supported = (CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? []
-                    if supported.contains(utType.identifier) { return utType }
-                }
-                return .jpeg
-            }
-        }
+    /// Whether this Mac's ImageIO can encode the type (it reads WebP but cannot write it).
+    public static func canWrite(_ type: UTType) -> Bool {
+        ((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? []).contains(type.identifier)
     }
     
-    public func outputExtension(for sourceURL: URL, config: CompressionConfiguration) -> String {
-        let ext = sourceURL.pathExtension.lowercased()
+    public func determineTargetUTType(for sourceURL: URL, config: CompressionConfiguration) -> UTType {
+        let wanted: UTType?
         switch config.imageFormatPolicy {
-        case .heicModern:   return "heic"
-        case .webpModern:   return "webp"
-        case .avifModern:   return "avif"
-        case .jpegStandard: return "jpg"
-        case .pngLossless:  return "png"
+        case .heicModern:   wanted = .heic
+        case .webpModern:   wanted = .webP
+        case .avifModern:   wanted = UTType(filenameExtension: "avif")
+        case .jpegStandard: wanted = .jpeg
+        case .pngLossless:  wanted = .png
         case .preserveOriginal:
-            return ext.isEmpty ? "jpg" : ext
+            let sourceType = UTType(filenameExtension: sourceURL.pathExtension.lowercased())
+            wanted = sourceType == .heif ? .heic : sourceType // ImageIO writes HEIF as public.heic
         }
+        if let wanted, wanted.conforms(to: .image), Self.canWrite(wanted) { return wanted }
+        // Not writable here (WebP, camera RAW, PSD…): PNG keeps transparency, JPEG for everything else.
+        return Self.hasAlpha(sourceURL) ? .png : .jpeg
+    }
+    
+    private static func hasAlpha(_ url: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return false }
+        return (props[kCGImagePropertyHasAlpha] as? Bool) ?? false
+    }
+    
+    /// The extension matching what compressImage writes. Keeps the source's own spelling (jpeg, tif) for its format.
+    public func outputExtension(for sourceURL: URL, config: CompressionConfiguration) -> String {
+        let type = determineTargetUTType(for: sourceURL, config: config)
+        let sourceExt = sourceURL.pathExtension.lowercased()
+        if UTType(filenameExtension: sourceExt) == type { return sourceExt }
+        return type == .jpeg ? "jpg" : (type.preferredFilenameExtension ?? "jpg")
     }
 }

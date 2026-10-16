@@ -26,3 +26,16 @@ final class FailedJobTests: XCTestCase {
         XCTAssertTrue(state.failedJobs.isEmpty)
     }
 }
+
+final class ClipboardCleanupTests: XCTestCase {
+    func testLaunchCleanupRemovesClipboardCopies() throws {
+        let fm = FileManager.default
+        let legacy = fm.temporaryDirectory.appendingPathComponent("clipboard_temp_\(UUID().uuidString).png")
+        try Data("old screenshot".utf8).write(to: legacy)
+        try fm.createDirectory(at: AppState.clipboardFolder, withIntermediateDirectories: true)
+        try Data("latest".utf8).write(to: AppState.clipboardFolder.appendingPathComponent("Clipboard.png"))
+        AppState.removeClipboardFiles()
+        XCTAssertFalse(fm.fileExists(atPath: legacy.path))
+        XCTAssertFalse(fm.fileExists(atPath: AppState.clipboardFolder.path))
+    }
+}

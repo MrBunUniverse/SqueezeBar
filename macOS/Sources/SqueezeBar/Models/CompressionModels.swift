@@ -160,6 +160,11 @@ public enum ImageFormatPolicy: String, Codable, Sendable, CaseIterable {
     case pngLossless = "PNG"
     case jpegStandard = "Web JPEG"
     
+    /// The choices this Mac can write. macOS reads WebP but has no WebP encoder.
+    public static var available: [ImageFormatPolicy] {
+        allCases.filter { $0 != .webpModern || AcceleratedImageCompressor.canWrite(.webP) }
+    }
+    
     public var description: String {
         switch self {
         case .preserveOriginal:

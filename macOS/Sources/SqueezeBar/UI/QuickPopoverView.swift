@@ -1682,7 +1682,7 @@ public struct QuickPopoverView: View {
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 
                 GeometryReader { proxy in
-                    let policies = ImageFormatPolicy.allCases
+                    let policies = ImageFormatPolicy.available
                     let spacing: CGFloat = 4
                     let available = proxy.size.width - spacing * CGFloat(policies.count - 1)
                     let selectedWidth = available / CGFloat(policies.count) * 1.8

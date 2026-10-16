@@ -164,7 +164,9 @@ public struct QueueItemSettingsSheet: View {
             
             Picker("", selection: $item.customImageFormat) {
                 Text("Preserve Original").tag(ImageFormatPolicy.preserveOriginal)
-                Text("Modern WebP").tag(ImageFormatPolicy.webpModern)
+                if ImageFormatPolicy.available.contains(.webpModern) {
+                    Text("Modern WebP").tag(ImageFormatPolicy.webpModern)
+                }
                 Text("Modern HEIC").tag(ImageFormatPolicy.heicModern)
                 Text("Modern AVIF").tag(ImageFormatPolicy.avifModern)
                 Text("PNG").tag(ImageFormatPolicy.pngLossless)
