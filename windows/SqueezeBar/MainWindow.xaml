@@ -27,7 +27,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel Spacing="1" VerticalAlignment="Center">
                 <!-- The animated S mark stands in for the "S" of the name. -->
-                <StackPanel Orientation="Horizontal" Spacing="1" AutomationProperties.Name="SqueezeBar">
+                <StackPanel Orientation="Horizontal" Spacing="3" AutomationProperties.Name="SqueezeBar">
                     <Viewbox x:Name="HeaderMark" Width="17" Height="20" VerticalAlignment="Bottom" Margin="0,0,0,5">
                         <Canvas x:Name="HeaderMarkCanvas" Width="576" Height="684" />
                     </Viewbox>

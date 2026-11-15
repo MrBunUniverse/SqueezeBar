@@ -67,51 +67,42 @@ public struct AcceleratedImageCompressor: Sendable {
         
         progressHandler?(0.15)
         
-        // 2. Resolve target format
-        let targetUTType = determineTargetUTType(for: sourceURL, config: config)
-        let quality = config.imageQuality          // 0.30 … 1.0
-        let isLossyFormat = (targetUTType == .jpeg || targetUTType == .heic || targetUTType == .webP || targetUTType.identifier.contains("avif"))
-        let isPNG = (targetUTType == .png)
-        
-        // 3. Choose compression strategy (Manual or Target Size Automated)
-        let strategy = compressionStrategy(
-            quality: quality,
-            targetSizeMB: config.effectiveTargetSizeMB,
-            preserveResolution: config.preserveResolutionInTargetMode,
-            isPNG: isPNG,
-            isLossyFormat: isLossyFormat,
-            sourceURL: sourceURL,
-            imageSource: imageSource
+        // 2. Resolve target format and compression strategy
+        let (actualOutputType, strategy) = resolvedEncodingPlan(
+            for: sourceURL,
+            imageSource: imageSource,
+            config: config
         )
         
         progressHandler?(0.25)
         
-        // 4. Build output
+        // 3. Build output
+        let isSingleFrameOutput = (actualOutputType == .jpeg || actualOutputType == .heic || actualOutputType == .png || actualOutputType == .bmp)
+        let outputFrameCount = isSingleFrameOutput ? 1 : frameCount
         let mutableData = CFDataCreateMutable(kCFAllocatorDefault, 0)!
-        
-        // For PNG at Max Compression, we re-encode internally as JPEG then wrap
-        // the bytes with .png extension — this is the only way to get real lossy
-        // compression while keeping the .png filename the user expects.
-        let actualOutputType: UTType
-        if isPNG && strategy.useJPEGFallback && config.imageFormatPolicy != .pngLossless {
-            actualOutputType = .jpeg
-        } else {
-            actualOutputType = targetUTType
-        }
         
         guard let destination = CGImageDestinationCreateWithData(
             mutableData,
             actualOutputType.identifier as CFString,
-            frameCount,
+            outputFrameCount,
             nil
         ) else {
             throw ImageCompressorError.cannotCreateDestination
         }
         
+        if actualOutputType == .gif,
+           let sourceProps = CGImageSourceCopyProperties(imageSource, nil) as? [CFString: Any],
+           let gifContainerProps = sourceProps[kCGImagePropertyGIFDictionary] {
+            CGImageDestinationSetProperties(
+                destination,
+                [kCGImagePropertyGIFDictionary: gifContainerProps] as CFDictionary
+            )
+        }
+        
         // 5. Process each frame
-        for i in 0..<frameCount {
+        for i in 0..<outputFrameCount {
             if control?.isCancelled == true { throw CancellationError() }
-            let frameProgress = 0.25 + (Double(i) / Double(max(frameCount, 1))) * 0.60
+            let frameProgress = 0.25 + (Double(i) / Double(max(outputFrameCount, 1))) * 0.60
             progressHandler?(frameProgress)
             
             let frameProps = (CGImageSourceCopyPropertiesAtIndex(imageSource, i, nil) as? [CFString: Any]) ?? [:]
@@ -165,7 +156,7 @@ public struct AcceleratedImageCompressor: Sendable {
             opts[kCGImagePropertyOrientation] = 1
             
             // GIF frame timing
-            if let gifProps = frameProps[kCGImagePropertyGIFDictionary] {
+            if actualOutputType == .gif, let gifProps = frameProps[kCGImagePropertyGIFDictionary] {
                 opts[kCGImagePropertyGIFDictionary] = gifProps
             }
             
@@ -199,13 +190,65 @@ public struct AcceleratedImageCompressor: Sendable {
         /// For PNG the encoder ignores it, but we set it anyway.
         let encoderQuality: Double
         
-        /// If true and output is PNG, we actually encode as JPEG internally
-        /// (the file gets .png extension but JPEG bytes — this is the only way
-        /// to get real lossy compression for a "Preserve Original" PNG workflow).
+        /// If true and output is an opaque PNG under Preserve Original, we encode as JPEG
+        /// and emit a .jpg extension so format and extension stay in sync.
         let useJPEGFallback: Bool
         
         /// Human-readable label for debugging.
         let label: String
+    }
+    
+    private func resolvedEncodingPlan(
+        for sourceURL: URL,
+        imageSource: CGImageSource?,
+        config: CompressionConfiguration
+    ) -> (actualOutputType: UTType, strategy: Strategy) {
+        let targetUTType = determineTargetUTType(for: sourceURL, config: config)
+        let quality = config.imageQuality          // 0.30 … 1.0
+        let isLossyFormat = (targetUTType == .jpeg || targetUTType == .heic || targetUTType == .webP || targetUTType.identifier.contains("avif"))
+        let isPNG = (targetUTType == .png)
+        
+        let openedSource = imageSource ?? CGImageSourceCreateWithURL(sourceURL as CFURL, nil)
+        let hasAlpha = Self.sourceHasAlpha(openedSource)
+        
+        let strategy = compressionStrategy(
+            quality: quality,
+            targetSizeMB: config.effectiveTargetSizeMB,
+            preserveResolution: config.preserveResolutionInTargetMode,
+            isPNG: isPNG,
+            hasAlpha: hasAlpha,
+            isLossyFormat: isLossyFormat,
+            sourceURL: sourceURL,
+            imageSource: openedSource
+        )
+        
+        let actualOutputType: UTType
+        if isPNG && strategy.useJPEGFallback && !hasAlpha && config.imageFormatPolicy != .pngLossless {
+            actualOutputType = .jpeg
+        } else {
+            actualOutputType = targetUTType
+        }
+        
+        return (actualOutputType, strategy)
+    }
+    
+    private static func sourceHasAlpha(_ imageSource: CGImageSource?) -> Bool {
+        guard let imageSource else { return false }
+        let frameCount = max(CGImageSourceGetCount(imageSource), 1)
+        for i in 0..<frameCount {
+            if let props = CGImageSourceCopyPropertiesAtIndex(imageSource, i, nil) as? [CFString: Any],
+               let hasAlpha = props[kCGImagePropertyHasAlpha] as? Bool {
+                if hasAlpha { return true }
+                continue
+            }
+            if let cgImage = CGImageSourceCreateImageAtIndex(imageSource, i, nil) {
+                let alpha = cgImage.alphaInfo
+                if alpha != .none && alpha != .noneSkipLast && alpha != .noneSkipFirst {
+                    return true
+                }
+            }
+        }
+        return false
     }
     
     private func compressionStrategy(
@@ -213,13 +256,14 @@ public struct AcceleratedImageCompressor: Sendable {
         targetSizeMB: Double?,
         preserveResolution: Bool,
         isPNG: Bool,
+        hasAlpha: Bool,
         isLossyFormat: Bool,
         sourceURL: URL,
-        imageSource: CGImageSource
+        imageSource: CGImageSource?
     ) -> Strategy {
         let sourceAttrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path)
         let sourceSize = (sourceAttrs?[.size] as? Int64) ?? 0
-        let props = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any]
+        let props = imageSource.flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] }
         let srcWidth = (props?[kCGImagePropertyPixelWidth] as? Int) ?? 0
         let srcHeight = (props?[kCGImagePropertyPixelHeight] as? Int) ?? 0
         let longEdge = CGFloat(max(srcWidth, srcHeight))
@@ -228,7 +272,7 @@ public struct AcceleratedImageCompressor: Sendable {
         if let targetMB = targetSizeMB {
             let targetBytes = targetMB * 1024.0 * 1024.0 * 0.95
             
-            if Double(sourceSize) <= targetBytes {
+            if sourceSize > 0 && Double(sourceSize) <= targetBytes {
                 return Strategy(
                     maxDimension: nil,
                     encoderQuality: 0.95,
@@ -237,7 +281,7 @@ public struct AcceleratedImageCompressor: Sendable {
                 )
             }
             
-            let ratio = targetBytes / Double(max(sourceSize, 1))
+            let ratio = sourceSize > 0 ? (targetBytes / Double(sourceSize)) : 0.50
             
             if isLossyFormat {
                 let calculatedQ: Double
@@ -262,7 +306,7 @@ public struct AcceleratedImageCompressor: Sendable {
                     label: "targetSize lossy q=\(calculatedQ)"
                 )
             } else if isPNG {
-                if ratio < 0.60 || preserveResolution {
+                if !hasAlpha && (ratio < 0.60 || preserveResolution) {
                     let calculatedQ = min(0.85, max(0.15, ratio * 0.65))
                     let maxDim: CGFloat? = preserveResolution ? nil : ((ratio < 0.30 && longEdge > 2560) ? 2560 : ((ratio < 0.15 && longEdge > 1920) ? 1920 : nil))
                     return Strategy(
@@ -273,7 +317,7 @@ public struct AcceleratedImageCompressor: Sendable {
                     )
                 } else {
                     let scale = min(1.0, max(0.30, sqrt(ratio)))
-                    let maxDim = longEdge * scale
+                    let maxDim: CGFloat? = preserveResolution ? nil : (longEdge > 0 ? longEdge * scale : nil)
                     return Strategy(
                         maxDimension: maxDim,
                         encoderQuality: 1.0,
@@ -317,7 +361,7 @@ public struct AcceleratedImageCompressor: Sendable {
             
             // Balanced (quality 0.65 ..< 0.85): downscale very large images
             if quality >= 0.65 {
-                let targetLong: CGFloat = longEdge > 3840 ? 3840 : CGFloat(longEdge)
+                let targetLong: CGFloat? = longEdge > 3840 ? 3840 : (longEdge > 0 ? CGFloat(longEdge) : nil)
                 return Strategy(
                     maxDimension: targetLong,
                     encoderQuality: 1.0,
@@ -326,10 +370,18 @@ public struct AcceleratedImageCompressor: Sendable {
                 )
             }
             
-            // Max Compression (quality < 0.65): re-encode as JPEG internally
+            // Max Compression (quality < 0.65): re-encode as JPEG only when opaque
+            let targetLong: CGFloat? = longEdge > 2560 ? 2560 : (longEdge > 0 ? CGFloat(longEdge) : nil)
+            if hasAlpha {
+                return Strategy(
+                    maxDimension: targetLong,
+                    encoderQuality: 1.0,
+                    useJPEGFallback: false,
+                    label: "png-maxcompress-alpha-downscale"
+                )
+            }
             let jpegQ = 0.40 + (quality - 0.30) * (0.70 - 0.40) / (0.64 - 0.30)
             let clampedJpegQ = min(max(jpegQ, 0.35), 0.75)
-            let targetLong: CGFloat = longEdge > 2560 ? 2560 : CGFloat(longEdge)
             return Strategy(
                 maxDimension: targetLong,
                 encoderQuality: clampedJpegQ,
@@ -351,51 +403,84 @@ public struct AcceleratedImageCompressor: Sendable {
     // MARK: - TARGET TYPE RESOLUTION
     // ==========================================================================
     
+    private static func writableDestinationType(_ preferred: UTType, supported: Set<String>) -> UTType {
+        if supported.contains(preferred.identifier) {
+            return preferred
+        }
+        if supported.contains(UTType.heic.identifier) {
+            return .heic
+        }
+        return .jpeg
+    }
+    
     public func determineTargetUTType(for sourceURL: URL, config: CompressionConfiguration) -> UTType {
         let ext = sourceURL.pathExtension.lowercased()
+        let supported = Set((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? [])
+        let avifType = UTType(tag: "avif", tagClass: .filenameExtension, conformingTo: .image) ?? .heic
         
+        let candidate: UTType
         switch config.imageFormatPolicy {
         case .heicModern:
-            return .heic
+            candidate = .heic
         case .webpModern:
-            return UTType.webP
+            candidate = .webP
         case .avifModern:
-            return UTType(tag: "avif", tagClass: .filenameExtension, conformingTo: .image) ?? .heic
+            candidate = avifType
         case .jpegStandard:
-            return .jpeg
+            candidate = .jpeg
         case .pngLossless:
-            return .png
+            candidate = .png
         case .preserveOriginal:
             switch ext {
-            case "jpg", "jpeg":  return .jpeg
-            case "png":          return .png
-            case "heic", "heif": return .heic
-            case "webp":         return UTType.webP
-            case "avif":         return UTType(tag: "avif", tagClass: .filenameExtension, conformingTo: .image) ?? .heic
-            case "gif":          return .gif
-            case "tif", "tiff":  return .tiff
-            case "bmp":          return .bmp
+            case "jpg", "jpeg":  candidate = .jpeg
+            case "png":          candidate = .png
+            case "heic", "heif": candidate = .heic
+            case "webp":         candidate = .webP
+            case "avif":         candidate = avifType
+            case "gif":          candidate = .gif
+            case "tif", "tiff":  candidate = .tiff
+            case "bmp":          candidate = .bmp
             default:
                 if let utType = UTType(filenameExtension: ext),
-                   utType.conforms(to: .image) {
-                    let supported = (CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? []
-                    if supported.contains(utType.identifier) { return utType }
+                   utType.conforms(to: .image),
+                   supported.contains(utType.identifier) {
+                    return utType
                 }
                 return .jpeg
             }
         }
+        
+        return Self.writableDestinationType(candidate, supported: supported)
     }
     
     public func outputExtension(for sourceURL: URL, config: CompressionConfiguration) -> String {
+        let (actualOutputType, _) = resolvedEncodingPlan(
+            for: sourceURL,
+            imageSource: nil,
+            config: config
+        )
         let ext = sourceURL.pathExtension.lowercased()
-        switch config.imageFormatPolicy {
-        case .heicModern:   return "heic"
-        case .webpModern:   return "webp"
-        case .avifModern:   return "avif"
-        case .jpegStandard: return "jpg"
-        case .pngLossless:  return "png"
-        case .preserveOriginal:
-            return ext.isEmpty ? "jpg" : ext
+        
+        switch actualOutputType {
+        case .jpeg:
+            return (config.imageFormatPolicy == .preserveOriginal && ext == "jpeg") ? "jpeg" : "jpg"
+        case .png:
+            return "png"
+        case .heic:
+            return (config.imageFormatPolicy == .preserveOriginal && ext == "heif") ? "heif" : "heic"
+        case .webP:
+            return "webp"
+        case .gif:
+            return "gif"
+        case .tiff:
+            return (config.imageFormatPolicy == .preserveOriginal && ext == "tif") ? "tif" : "tiff"
+        case .bmp:
+            return "bmp"
+        default:
+            if actualOutputType.identifier.contains("avif") {
+                return "avif"
+            }
+            return actualOutputType.preferredFilenameExtension ?? (ext.isEmpty ? "jpg" : ext)
         }
     }
 }

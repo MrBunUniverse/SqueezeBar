@@ -2,6 +2,7 @@ import XCTest
 import AVFoundation
 import CoreImage
 import ImageIO
+import PDFKit
 @testable import SqueezeBar
 
 final class OrientationTests: XCTestCase {
@@ -168,5 +169,97 @@ final class OrientationTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testRotatedPDFPagePreservesBoundsAndEdgeContent() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let sourceURL = folder.appendingPathComponent("rotated_source.pdf")
+        let outputURL = folder.appendingPathComponent("rotated_output.pdf")
+
+        // Build a 600x300 unrotated page with distinct red content near the right edge (x: 500..<600),
+        // which would be clipped if drawn with rotation 90 into a 600x300 bitmap.
+        var mediaBox = CGRect(x: 0, y: 0, width: 600, height: 300)
+        let pdfData = NSMutableData()
+        let consumer = try XCTUnwrap(CGDataConsumer(data: pdfData as CFMutableData))
+        let pdfContext = try XCTUnwrap(CGContext(consumer: consumer, mediaBox: &mediaBox, nil))
+        pdfContext.beginPDFPage(nil)
+        pdfContext.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        pdfContext.fill(mediaBox)
+        pdfContext.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        pdfContext.fill(CGRect(x: 500, y: 50, width: 90, height: 200))
+        pdfContext.endPDFPage()
+        pdfContext.closePDF()
+
+        let doc = try XCTUnwrap(PDFDocument(data: pdfData as Data))
+        let srcPage = try XCTUnwrap(doc.page(at: 0))
+        srcPage.rotation = 90
+        XCTAssertTrue(doc.write(to: sourceURL))
+
+        let reloadedSource = try XCTUnwrap(PDFDocument(url: sourceURL))
+        let expectedPage = try XCTUnwrap(reloadedSource.page(at: 0))
+        let expectedRotation = expectedPage.rotation
+        let expectedMediaBounds = expectedPage.bounds(for: .mediaBox)
+        let expectedRotatedSize = expectedPage.thumbnail(of: CGSize(width: 300, height: 600), for: .mediaBox).size
+
+        var config = CompressionConfiguration()
+        config.pdfDPI = .dpi72
+        config.pdfImageQuality = 0.90
+        try AcceleratedPDFCompressor().compressPDF(
+            from: sourceURL,
+            to: outputURL,
+            config: config,
+            progressHandler: { _ in }
+        )
+
+        let outDoc = try XCTUnwrap(PDFDocument(url: outputURL))
+        let outPage = try XCTUnwrap(outDoc.page(at: 0))
+        XCTAssertEqual(outPage.rotation, expectedRotation)
+        XCTAssertEqual(outPage.bounds(for: .mediaBox), expectedMediaBounds)
+        let outRotatedSize = outPage.thumbnail(of: CGSize(width: 300, height: 600), for: .mediaBox).size
+        XCTAssertEqual(outRotatedSize.width, expectedRotatedSize.width, accuracy: 1.0)
+        XCTAssertEqual(outRotatedSize.height, expectedRotatedSize.height, accuracy: 1.0)
+
+        // Render both source and output pages with their rotation applied (effective bounds 300x600).
+        func render(_ page: PDFPage, width: Int = 300, height: Int = 600) throws -> [UInt8] {
+            let ctx = try XCTUnwrap(CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            page.draw(with: .mediaBox, to: ctx)
+            let data = try XCTUnwrap(ctx.data).assumingMemoryBound(to: UInt8.self)
+            return Array(UnsafeBufferPointer(start: data, count: width * height * 4))
+        }
+
+        let renderW = 300, renderH = 600
+        let srcPixels = try render(expectedPage, width: renderW, height: renderH)
+        let outPixels = try render(outPage, width: renderW, height: renderH)
+
+        // Find where the red band near the x=500..<600 edge landed in the rotated source render,
+        // and verify it is non-blank (red) at the exact same location in the output render.
+        var redSampleOffset: Int?
+        for y in [50, renderH - 50] {
+            let offset = (y * renderW + 150) * 4
+            if srcPixels[offset] > 180 && srcPixels[offset + 1] < 80 && srcPixels[offset + 2] < 80 {
+                redSampleOffset = offset
+                break
+            }
+        }
+        let offset = try XCTUnwrap(redSampleOffset, "Source page did not render red content near either edge")
+        let r = outPixels[offset]
+        let g = outPixels[offset + 1]
+        let b = outPixels[offset + 2]
+        XCTAssertGreaterThan(r, 180, "Expected red content near rotated edge, got RGB(\(r), \(g), \(b))")
+        XCTAssertLessThan(g, 80, "Expected non-blank (red) content near rotated edge, got RGB(\(r), \(g), \(b))")
+        XCTAssertLessThan(b, 80, "Expected non-blank (red) content near rotated edge, got RGB(\(r), \(g), \(b))")
     }
 }

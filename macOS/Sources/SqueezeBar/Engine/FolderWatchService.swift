@@ -13,45 +13,55 @@ public final class FolderWatchService: @unchecked Sendable {
     private init() {}
     
     public func startMonitoring(path: String) {
-        stopMonitoring()
-        
-        let fileManager = FileManager.default
-        var isDir: ObjCBool = false
-        guard fileManager.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else {
-            return
-        }
-        
-        // Populate existing files so we only process new arrivals
-        if let contents = try? fileManager.contentsOfDirectory(atPath: path) {
-            knownFiles = Set(contents)
-        }
-        
-        fileDescriptor = open(path, O_EVTONLY)
-        guard fileDescriptor >= 0 else { return }
-        
-        let src = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fileDescriptor,
-            eventMask: [.write, .extend, .attrib, .link],
-            queue: queue
-        )
-        
-        src.setEventHandler { [weak self] in
-            self?.handleFolderEvent(path: path)
-        }
-        
-        src.setCancelHandler { [weak self] in
-            guard let self = self else { return }
-            if self.fileDescriptor >= 0 {
-                close(self.fileDescriptor)
-                self.fileDescriptor = -1
+        queue.async { [self] in
+            stopMonitoringOnQueue()
+
+            let fileManager = FileManager.default
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else {
+                return
             }
+
+            // Populate existing files so we only process new arrivals
+            if let contents = try? fileManager.contentsOfDirectory(atPath: path) {
+                knownFiles = Set(contents)
+            }
+
+            let fd = open(path, O_EVTONLY)
+            guard fd >= 0 else { return }
+            fileDescriptor = fd
+
+            let src = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: fd,
+                eventMask: [.write, .extend, .attrib, .link],
+                queue: queue
+            )
+
+            src.setEventHandler { [weak self] in
+                self?.handleFolderEvent(path: path)
+            }
+
+            src.setCancelHandler { [weak self] in
+                close(fd)
+                if self?.fileDescriptor == fd {
+                    self?.fileDescriptor = -1
+                }
+            }
+
+            source = src
+            src.resume()
         }
-        
-        self.source = src
-        src.resume()
     }
     
     public func stopMonitoring() {
+        queue.async { [self] in
+            stopMonitoringOnQueue()
+        }
+    }
+
+    private func stopMonitoringOnQueue() {
+        debounceTimer?.cancel()
+        debounceTimer = nil
         source?.cancel()
         source = nil
         knownFiles.removeAll()
@@ -59,62 +69,89 @@ public final class FolderWatchService: @unchecked Sendable {
     
     private func handleFolderEvent(path: String) {
         debounceTimer?.cancel()
-        debounceTimer = Task {
+        debounceTimer = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2 sec debounce for file write completion
-            guard !Task.isCancelled else { return }
+            guard let self, !Task.isCancelled else { return }
             
             let fileManager = FileManager.default
             guard let currentContents = try? fileManager.contentsOfDirectory(atPath: path) else { return }
             
             let currentSet = Set(currentContents)
-            let newItems = currentSet.subtracting(self.knownFiles)
-            self.knownFiles = currentSet
+            let newItems = self.queue.sync { currentSet.subtracting(self.knownFiles) }
+            guard !newItems.isEmpty, !Task.isCancelled else { return }
             
             let config = await AppState.shared.currentConfiguration()
             let suffix = config.suffix.isEmpty ? "_min" : config.suffix
             
-            var candidates: [URL] = []
+            var candidates: [(name: String, url: URL)] = []
+            var skippedNames: [String] = []
             for item in newItems {
-                if item.hasPrefix(".") || item.contains(suffix) || item.hasPrefix("clipboard_") {
+                if Self.shouldSkip(fileName: item, suffix: suffix) {
+                    skippedNames.append(item)
                     continue
                 }
                 
                 let itemURL = URL(fileURLWithPath: path).appendingPathComponent(item)
                 if MediaType.classify(url: itemURL) != .unsupported {
-                    candidates.append(itemURL)
+                    candidates.append((item, itemURL))
+                } else {
+                    skippedNames.append(item)
                 }
             }
             
-            // Skip files still being copied in; one wait covers the whole batch.
-            let urlsToProcess = await Self.waitUntilStable(candidates)
-            if !urlsToProcess.isEmpty, !Task.isCancelled {
-                await MediaCompressionEngine.shared.processDroppedURLs(urlsToProcess)
+            if !skippedNames.isEmpty {
+                self.queue.sync { self.knownFiles.formUnion(skippedNames) }
             }
+
+            await self.pollAndProcess(candidates)
         }
     }
 
-    /// Polls all files together until their sizes stop changing (copy finished). Returns the stable ones; gives up after ~2 minutes.
-    private static func waitUntilStable(_ urls: [URL]) async -> [URL] {
-        var pending = urls
+    static func shouldSkip(fileName: String, suffix: String) -> Bool {
+        if fileName.hasPrefix(".") || fileName.hasPrefix("clipboard_") {
+            return true
+        }
+        guard !suffix.isEmpty else { return false }
+        let baseName = (fileName as NSString).deletingPathExtension
+        return baseName.hasSuffix(suffix)
+    }
+
+    /// Polls all candidates together until each file's size stops changing, handing off stable batches each second. Gives up after ~2 minutes.
+    private func pollAndProcess(_ candidates: [(name: String, url: URL)]) async {
+        var pending = candidates
         var lastSizes: [URL: Int64] = [:]
-        var ready: [URL] = []
+        let fm = FileManager.default
+
         for _ in 0..<120 {
-            guard !Task.isCancelled, !pending.isEmpty else { break }
-            var stillChanging: [URL] = []
-            for url in pending {
-                // A file that vanished is dropped; one still growing waits for the next sample.
-                guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64 else { continue }
-                if lastSizes[url] == size {
-                    ready.append(url)
+            guard !pending.isEmpty, !Task.isCancelled else { return }
+
+            var stableURLs: [URL] = []
+            var stableNames: [String] = []
+            var stillPending: [(name: String, url: URL)] = []
+
+            for entry in pending {
+                guard let size = (try? fm.attributesOfItem(atPath: entry.url.path))?[.size] as? Int64 else {
+                    continue
+                }
+                if lastSizes[entry.url] == size {
+                    stableURLs.append(entry.url)
+                    stableNames.append(entry.name)
+                    lastSizes.removeValue(forKey: entry.url)
                 } else {
-                    lastSizes[url] = size
-                    stillChanging.append(url)
+                    lastSizes[entry.url] = size
+                    stillPending.append(entry)
                 }
             }
-            pending = stillChanging
-            if pending.isEmpty { break }
+
+            if !stableURLs.isEmpty, !Task.isCancelled {
+                queue.sync { knownFiles.formUnion(stableNames) }
+                // Don't await: keep polling the rest while this batch compresses.
+                Task { await MediaCompressionEngine.shared.processDroppedURLs(stableURLs) }
+            }
+
+            pending = stillPending
+            guard !pending.isEmpty, !Task.isCancelled else { return }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
-        return ready
     }
 }
