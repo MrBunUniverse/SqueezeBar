@@ -162,9 +162,14 @@ public struct QuickPopoverView: View {
         .background(
             Group {
                 Button("") {
-                    state.squeezeClipboard()
+                    if let textResponder = NSApp.keyWindow?.firstResponder as? NSText {
+                        textResponder.paste(nil)
+                    } else {
+                        state.squeezeClipboard()
+                    }
                 }
                 .keyboardShortcut("v", modifiers: [.command])
+                .disabled(isCreatingFolder || isBatchRenaming)
 
                 Button("") {
                     FloatingDropWindowController.shared.toggleWindow()
@@ -259,47 +264,6 @@ public struct QuickPopoverView: View {
             }
             
             Spacer()
-            
-            if isDetached {
-                // Circular Dock button (Only shown in detached floating window)
-                Button {
-                    FloatingDropWindowController.shared.dockToMenuBar()
-                } label: {
-                    Image(systemName: "pip.enter")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundColor(.primary.opacity(0.85))
-                        .frame(width: 24, height: 24)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.08))
-                                .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-                        )
-                }
-                .buttonStyle(.plain)
-                .hoverGrow(1.12)
-                .help("Dock to Menu Bar")
-                .accessibilityLabel("Dock to Menu Bar")
-            } else {
-                // Circular Undock button (Only shown in Menu Bar popover)
-                Button {
-                    StatusBarController.sharedInstance?.closePopover(sender: nil)
-                    FloatingDropWindowController.shared.showFloatingWindow()
-                } label: {
-                    Image(systemName: "pip.exit")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundColor(.primary.opacity(0.85))
-                        .frame(width: 24, height: 24)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.08))
-                                .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-                        )
-                }
-                .buttonStyle(.plain)
-                .hoverGrow(1.12)
-                .help("Undock as Floating Window")
-                .accessibilityLabel("Undock as Floating Window")
-            }
             
             if state.isProcessing {
                 HStack(spacing: 5) {
@@ -401,7 +365,7 @@ public struct QuickPopoverView: View {
             profileTile(.images, icon: "photo", primary: state.imageFormatPolicy.displayName, secondary: state.imageResolutionScale < 1 ? String(localized: "\(Int(state.imageQualitySlider * 100))% · \(Int(state.imageResolutionScale * 100))% size") : String(localized: "\(Int(state.imageQualitySlider * 100))% quality"))
             profileTile(.videos, icon: "film", primary: state.videoCodec == .hevc ? "HEVC" : (state.videoCodec == .h264 ? "H.264" : "GIF"), secondary: state.videoFramerate == .original ? String(localized: "\(Int(state.videoQualitySlider * 100))% quality") : "\(state.videoFramerate.displayName) · \(Int(state.videoQualitySlider * 100))%")
             profileTile(.audio, icon: "waveform", primary: state.audioBitrate.shortName, secondary: state.stripMetadata ? String(localized: "Metadata removed") : String(localized: "Metadata kept"))
-            profileTile(.pdf, icon: "doc.text.fill", primary: "\(Int(state.pdfDPI.dpiValue)) DPI", secondary: "\(Int(state.pdfImageQuality * 100))% quality\(state.pdfGrayscale ? " · Grayscale" : "")")
+            profileTile(.pdf, icon: "doc.text.fill", primary: "\(Int(state.pdfDPI.dpiValue)) DPI", secondary: state.pdfGrayscale ? String(localized: "\(Int(state.pdfImageQuality * 100))% quality · Grayscale") : String(localized: "\(Int(state.pdfImageQuality * 100))% quality"))
         }
     }
 
@@ -760,7 +724,14 @@ public struct QuickPopoverView: View {
     private var recentHistorySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !(state.recentResults.isEmpty && state.customFolders.isEmpty) {
-                compactDropStrip
+                VStack(spacing: 8) {
+                    compactDropStrip
+                    squeezeClipboardButton
+                }
+
+                if !state.stagedQueue.isEmpty {
+                    customQueueSection
+                }
             }
 
             // Header Bar
@@ -775,7 +746,7 @@ public struct QuickPopoverView: View {
                 
                 Menu {
                     Button {
-                        newFolderName = "Project \(state.customFolders.count + 1)"
+                        newFolderName = String(localized: "Project \(state.customFolders.count + 1)")
                         isCreatingFolder = true
                     } label: {
                         Label("New Folder", systemImage: "folder.badge.plus")
@@ -796,6 +767,7 @@ public struct QuickPopoverView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .help("Recent actions")
+                .accessibilityLabel("Recent actions")
 
                 if !state.recentResults.isEmpty {
                     Button {
@@ -964,7 +936,8 @@ public struct QuickPopoverView: View {
                         .background(Capsule().fill(Color.red.opacity(0.12)))
                 }
                 .buttonStyle(.plain)
-                .help("Delete Selected")
+                .help("Remove from History")
+                .accessibilityLabel("Remove from History")
             }
         }
         .padding(.horizontal, 10)
@@ -1002,6 +975,7 @@ public struct QuickPopoverView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.secondary)
+                .keyboardShortcut(.cancelAction)
                 
                 Button("Create") {
                     state.addFolder(name: newFolderName)
@@ -1012,6 +986,7 @@ public struct QuickPopoverView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background(Capsule().fill(state.accentColor))
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
@@ -1021,6 +996,11 @@ public struct QuickPopoverView: View {
     private var batchRenameModal: some View {
         let previewExample1 = renamePattern.replacingOccurrences(of: "{index}", with: "1").replacingOccurrences(of: "{i}", with: "1").replacingOccurrences(of: "#", with: "1")
         let previewExample2 = renamePattern.replacingOccurrences(of: "{index}", with: "2").replacingOccurrences(of: "{i}", with: "2").replacingOccurrences(of: "#", with: "2")
+        let selectedItems = state.recentResults.filter { selectedResultIds.contains($0.id) }
+        let ext1 = selectedItems.first?.outputURL.pathExtension ?? ""
+        let ext2 = (selectedItems.dropFirst().first ?? selectedItems.first)?.outputURL.pathExtension ?? ext1
+        let dotExt1 = ext1.isEmpty ? "" : ".\(ext1)"
+        let dotExt2 = ext2.isEmpty ? "" : ".\(ext2)"
         
         return VStack(alignment: .leading, spacing: 12) {
             Text("Batch Format Rename (\(selectedResultIds.count) files)")
@@ -1041,7 +1021,7 @@ public struct QuickPopoverView: View {
                     .foregroundColor(.secondary.opacity(0.8))
                 
                 HStack(spacing: 4) {
-                    Text("\(previewExample1).mp4,  \(previewExample2).mp4 ...")
+                    Text(selectedItems.count == 1 ? "\(previewExample1)\(dotExt1)" : "\(previewExample1)\(dotExt1),  \(previewExample2)\(dotExt2) ...")
                         .font(.system(size: 10.5, weight: .medium, design: .rounded))
                         .foregroundColor(state.accentColor)
                         .lineLimit(1)
@@ -1081,6 +1061,7 @@ public struct QuickPopoverView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.secondary)
+                .keyboardShortcut(.cancelAction)
                 
                 Button("Rename Files") {
                     state.batchRenameResults(ids: selectedResultIds, pattern: renamePattern)
@@ -1091,6 +1072,7 @@ public struct QuickPopoverView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background(Capsule().fill(state.accentColor))
+                .keyboardShortcut(.defaultAction)
             }
             .padding(.top, 4)
         }
@@ -1165,22 +1147,26 @@ public struct QuickPopoverView: View {
                 extractAndProcess(providers: providers)
             }
 
-            Button {
-                state.squeezeClipboard()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.on.clipboard")
-                    Text("Squeeze from Clipboard")
-                    Text("⌘V")
-                        .foregroundColor(.secondary)
-                }
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundColor(.secondary)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            squeezeClipboardButton
         }
+    }
+
+    private var squeezeClipboardButton: some View {
+        Button {
+            state.squeezeClipboard()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.on.clipboard")
+                Text("Squeeze from Clipboard")
+                Text("⌘V")
+                    .foregroundColor(.secondary)
+            }
+            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .foregroundColor(.secondary)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Custom Staged Queue Section (Customize Settings Per File)
@@ -1438,10 +1424,10 @@ public struct QuickPopoverView: View {
     
     private func targetSizeAutomaticNote(for category: MediaFormatCategory) -> String {
         switch category {
-        case .images: return "Image quality is chosen automatically to fit the limit."
-        case .videos: return "Video bitrate is chosen automatically to fit the limit."
-        case .audio: return "Audio bitrate is chosen automatically to fit the limit."
-        case .pdf: return "DPI and image quality act as upper limits; they're lowered only if needed."
+        case .images: return String(localized: "Image quality is chosen automatically to fit the limit.")
+        case .videos: return String(localized: "Video bitrate is chosen automatically to fit the limit.")
+        case .audio: return String(localized: "Audio bitrate is chosen automatically to fit the limit.")
+        case .pdf: return String(localized: "DPI and image quality act as upper limits; they're lowered only if needed.")
         }
     }
     
@@ -1625,7 +1611,7 @@ public struct QuickPopoverView: View {
                 })
             }
             .drawerSection()
-            .targetSizeLocked(state: state, what: "quality")
+            .targetSizeLocked(state: state, what: String(localized: "quality"))
             
             // Resolution Slider Card
             VStack(alignment: .leading, spacing: 7) {
@@ -1717,6 +1703,13 @@ public struct QuickPopoverView: View {
                     })
                 }
                 .frame(height: 26)
+                
+                if state.imageFormatPolicy == .webpModern {
+                    Text("WebP isn't supported by macOS; files are saved as HEIC.")
+                        .font(.system(size: 10.5, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .drawerSection()
         }
@@ -1771,7 +1764,7 @@ public struct QuickPopoverView: View {
                 })
             }
             .drawerSection()
-            .targetSizeLocked(state: state, what: "bitrate")
+            .targetSizeLocked(state: state, what: String(localized: "bitrate"))
             
             // Video Resolution Slider Card
             VStack(alignment: .leading, spacing: 7) {
@@ -1969,6 +1962,8 @@ public struct QuickPopoverView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(.isToggle)
+                    .accessibilityValue(state.videoRemoveAudio ? String(localized: "On") : String(localized: "Off"))
                 }
             }
             .drawerSection()
@@ -2014,7 +2009,7 @@ public struct QuickPopoverView: View {
                 })
             }
             .drawerSection()
-            .targetSizeLocked(state: state, what: "bitrate")
+            .targetSizeLocked(state: state, what: String(localized: "bitrate"))
         }
     }
     
@@ -2057,6 +2052,11 @@ public struct QuickPopoverView: View {
                 ) { dpi in
                     state.pdfDPI = dpi
                 })
+                
+                Text("Pages are re-rendered as images; text won't be selectable.")
+                    .font(.system(size: 10.5, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .drawerSection()
             
@@ -2197,6 +2197,8 @@ public struct QuickPopoverView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(isOn.wrappedValue ? String(localized: "On") : String(localized: "Off"))
     }
 
     private func settingsDivider() -> some View {
@@ -2275,7 +2277,13 @@ public struct QuickPopoverView: View {
 
                 settingsDivider()
 
-                settingsToggleRow("Strip EXIF / metadata", isOn: $state.stripMetadata, detail: "Removes location and camera info")
+                VStack(alignment: .leading, spacing: 4) {
+                    settingsToggleRow("Strip EXIF / metadata", isOn: $state.stripMetadata, detail: "Removes location and camera info")
+                    Text("Applies to images. Location data is always removed.")
+                        .font(.system(size: 10.5, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             // Input methods other than the menu bar itself
@@ -2785,7 +2793,7 @@ public struct QuickPopoverView: View {
     // MARK: - Footer
     private var footerView: some View {
         HStack {
-            Text("SqueezeBar v1.1.0 • SirJameTV")
+            Text("SqueezeBar v1.2.1 • SirJameTV")
                 .font(.system(size: 10.5, design: .rounded))
                 .foregroundColor(.secondary)
             
@@ -3093,6 +3101,8 @@ private struct LiquidGlassToggleRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(isOn ? String(localized: "On") : String(localized: "Off"))
     }
 }
 
@@ -4040,7 +4050,7 @@ private struct QuickPopoverHistoryRowItem: View {
             fillOpacity = 0.07
         } else if sizeDifference > 0 {
             tint = .orange
-            label = "\(ByteCountFormatter.string(fromByteCount: sizeDifference, countStyle: .file)) larger"
+            label = String(localized: "\(ByteCountFormatter.string(fromByteCount: sizeDifference, countStyle: .file)) larger")
             fillOpacity = 0.05
         } else {
             tint = .secondary
@@ -4078,7 +4088,8 @@ private struct QuickPopoverHistoryRowItem: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(isSelected ? "Deselect item" : "Select item")
+                .help(isSelected ? Text("Deselect item") : Text("Select item"))
+                .accessibilityLabel(isSelected ? Text("Deselect item") : Text("Select item"))
             }
             
             FileThumbnailView(url: item.outputURL, mediaType: item.mediaType, size: 30)

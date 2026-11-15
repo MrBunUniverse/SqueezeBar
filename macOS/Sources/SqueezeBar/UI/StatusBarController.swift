@@ -29,7 +29,7 @@ struct FileDragSession {
 }
 
 @MainActor
-public final class StatusBarController: NSObject {
+public final class StatusBarController: NSObject, NSPopoverDelegate {
     public static weak var sharedInstance: StatusBarController?
     
     // MARK: - Dimensions
@@ -46,6 +46,8 @@ public final class StatusBarController: NSObject {
     private var localDragEventMonitor: Any?
     private var dragTrackingTimer: Timer?
     private var fileDragSession: FileDragSession?
+    private var lastClosedEventNumber: Int?
+    private var lastClosedTime: TimeInterval = 0
     
     public var window: NSWindow? {
         return popover?.contentViewController?.view.window
@@ -68,8 +70,11 @@ public final class StatusBarController: NSObject {
         self.dropView = customView
         
         if let button = statusItem.button {
+            let label = String(localized: "SqueezeBar")
             button.title = ""
             button.image = nil
+            button.toolTip = label
+            button.setAccessibilityLabel(label)
             button.addSubview(customView)
             customView.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
@@ -115,6 +120,10 @@ public final class StatusBarController: NSObject {
               let button = statusItem.button,
               let window = button.window else { return }
 
+        let mouse = NSEvent.mouseLocation
+        let screen = window.screen ?? NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })
+        if let screen, mouse.y < screen.frame.maxY - 96 { return }
+
         let buttonFrame = window.convertToScreen(button.convert(button.bounds, to: nil))
         let dropZone = NSRect(
             x: buttonFrame.minX - 18,
@@ -122,7 +131,7 @@ public final class StatusBarController: NSObject {
             width: buttonFrame.width + 36,
             height: buttonFrame.height + 48
         )
-        guard dropZone.contains(NSEvent.mouseLocation),
+        guard dropZone.contains(mouse),
               StatusItemDropView.containsPotentialFileDragType(NSPasteboard(name: .drag).types ?? []) else { return }
 
         dropView.beginDragHover()
@@ -142,6 +151,7 @@ public final class StatusBarController: NSObject {
         pop.contentSize = NSSize(width: scale.baseWidth, height: scale.baseHeight)
         pop.behavior = .transient
         pop.animates = true
+        pop.delegate = self
         
         let contentView = QuickPopoverView(isDetachedWindow: false)
             .environmentObject(AppState.shared)
@@ -168,15 +178,23 @@ public final class StatusBarController: NSObject {
     // MARK: - Popover Presentation
     public func togglePopover(sender: NSView) {
         if AppState.shared.isDetached {
-            FloatingDropWindowController.shared.showFloatingWindow()
+            FloatingDropWindowController.shared.toggleWindow()
             return
         }
         
         if popover.isShown {
             closePopover(sender: sender)
-        } else {
-            showPopover(sender: sender)
+            return
         }
+        
+        // The click that just dismissed the transient popover must not reopen it.
+        let now = ProcessInfo.processInfo.systemUptime
+        let sameClick = lastClosedEventNumber != nil && NSApp.currentEvent?.eventNumber == lastClosedEventNumber
+        if sameClick || now - lastClosedTime < 0.25 {
+            return
+        }
+        
+        showPopover(sender: sender)
     }
     
     public func showPopover(sender: NSView? = nil, relativeTo anchor: NSRect? = nil) {
@@ -185,33 +203,43 @@ public final class StatusBarController: NSObject {
             return
         }
         
-        let targetView = sender ?? statusItem.button ?? dropView
-        if let button = targetView {
+        let button = statusItem.button ?? sender ?? dropView
+        guard let button else { return }
+        
+        if !popover.isShown {
             popover.behavior = AppState.shared.isPinned ? .applicationDefined : .transient
-            popover.show(relativeTo: anchor ?? button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
+            let rect = (anchor != nil && sender === button) ? anchor! : button.bounds
+            popover.show(relativeTo: rect, of: button, preferredEdge: .minY)
+        }
+        
+        NSApp.activate(ignoringOtherApps: true)
+        
+        if let window = popover.contentViewController?.view.window {
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.level = .floating
+        }
+        
+        let openingEventNumber = NSApp.currentEvent?.eventNumber
+        let openedAt = ProcessInfo.processInfo.systemUptime
+        removeEventMonitor()
+        
+        // Monitor clicks outside to dismiss (only if not pinned and not clicking on Color Panel)
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self else { return }
+            guard !AppState.shared.isPinned else { return }
+            if let openingEventNumber, event.eventNumber == openingEventNumber { return }
+            if ProcessInfo.processInfo.systemUptime - openedAt < 0.08 { return }
             
-            if let window = popover.contentViewController?.view.window {
-                window.isOpaque = false
-                window.backgroundColor = .clear
-                window.level = .floating
-            }
-            
-            // Monitor clicks outside to dismiss (only if not pinned and not clicking on Color Panel)
-            eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                guard let self = self else { return }
-                guard !AppState.shared.isPinned else { return }
-                
-                // If NSColorPanel is open and the click is inside its window frame, keep popover open
-                if NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible {
-                    let mousePoint = NSEvent.mouseLocation
-                    if NSPointInRect(mousePoint, NSColorPanel.shared.frame) {
-                        return
-                    }
+            // If NSColorPanel is open and the click is inside its window frame, keep popover open
+            if NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible {
+                let mousePoint = NSEvent.mouseLocation
+                if NSPointInRect(mousePoint, NSColorPanel.shared.frame) {
+                    return
                 }
-                
-                self.closePopover(sender: nil)
             }
+            
+            self.closePopover(sender: nil)
         }
     }
 
@@ -313,6 +341,8 @@ public final class StatusBarController: NSObject {
     }
     
     public func closePopover(sender: Any?) {
+        lastClosedEventNumber = NSApp.currentEvent?.eventNumber
+        lastClosedTime = ProcessInfo.processInfo.systemUptime
         if fileDragSession != nil { finishFileDragHover(didDrop: true) }
         if NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible {
             CustomColorPanelManager.shared.close()
@@ -320,6 +350,21 @@ public final class StatusBarController: NSObject {
         if popover.isShown {
             popover.performClose(sender)
         }
+        removeEventMonitor()
+    }
+    
+    // Record on willClose: with animates = true, didClose fires after the animation,
+    // too late to stop the same click on the icon from reopening it.
+    public func popoverWillClose(_ notification: Notification) {
+        lastClosedEventNumber = NSApp.currentEvent?.eventNumber
+        lastClosedTime = ProcessInfo.processInfo.systemUptime
+    }
+
+    public func popoverDidClose(_ notification: Notification) {
+        removeEventMonitor()
+    }
+    
+    private func removeEventMonitor() {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil

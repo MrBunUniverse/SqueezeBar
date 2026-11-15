@@ -80,14 +80,11 @@ public final class StatusItemDropView: NSView {
     // MARK: - Mouse Click Handling
     public override func mouseDown(with event: NSEvent) {
         isHighlighted = true
+        controller?.togglePopover(sender: self)
     }
     
     public override func mouseUp(with event: NSEvent) {
         isHighlighted = false
-        let location = convert(event.locationInWindow, from: nil)
-        if bounds.contains(location) {
-            controller?.togglePopover(sender: self)
-        }
     }
     
     public override func rightMouseDown(with event: NSEvent) {
@@ -224,8 +221,9 @@ public final class StatusItemDropView: NSView {
     // MARK: - Render: Idle Icon
     private func drawIdleState(in rect: NSRect, context: CGContext) {
         let iconSize: CGFloat = 17.0
-        let iconColor: NSColor = isHighlighted ? .systemBlue : .white
+        let iconColor: NSColor = isHighlighted ? .systemBlue : .controlTextColor
         let clampImage = NSImage.squeezeClampImage(size: iconSize, color: iconColor)
+        clampImage.isTemplate = !isHighlighted
         let iconRect = NSRect(
             x: (rect.width - iconSize) / 2,
             y: (rect.height - iconSize) / 2,
@@ -264,7 +262,7 @@ public final class StatusItemDropView: NSView {
         tailOutline.lineWidth = 1
         tailOutline.stroke()
 
-        let label = "Drop here" as NSString
+        let label = String(localized: "Drop here") as NSString
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.roundedSystemFont(ofSize: 10.5, weight: .semibold),
             .foregroundColor: NSColor.white
@@ -286,6 +284,7 @@ public final class StatusItemDropView: NSView {
         label.draw(in: labelRect, withAttributes: labelAttributes)
 
         let clampImage = NSImage.squeezeClampImage(size: iconSize, color: .white)
+        clampImage.isTemplate = false
         clampImage.draw(in: iconRect)
     }
     
@@ -298,7 +297,9 @@ public final class StatusItemDropView: NSView {
             width: iconSize,
             height: iconSize
         )
-        NSImage.squeezeProgressImage(size: iconSize, color: .white, progress: progress).draw(in: iconRect)
+        let progressImage = NSImage.squeezeProgressImage(size: iconSize, color: .controlTextColor, progress: progress)
+        progressImage.isTemplate = true
+        progressImage.draw(in: iconRect)
     }
     
     // MARK: - Render: Success Checkmark Badge

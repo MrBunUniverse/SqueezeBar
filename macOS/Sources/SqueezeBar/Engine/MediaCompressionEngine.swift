@@ -13,14 +13,45 @@ public actor MediaCompressionEngine {
     private let audioCompressor = HardwareAudioCompressor()
     private let pdfCompressor = AcceleratedPDFCompressor()
     
-    private var activeJobTasks: [UUID: Task<Void, Never>] = [:]
+    private var activeJobTasks: [UUID: Task<Bool, Never>] = [:]
     private var activeDestinationURLs: [UUID: URL] = [:]
     private var cancelledJobIds: Set<UUID> = []
+    private var runningJobCount = 0
+    
+    // App-wide cap shared by every entry path (2 jobs on <=8 cores, else 4).
+    private static let maxConcurrentJobs = ProcessInfo.processInfo.activeProcessorCount <= 8 ? 2 : 4
+    private var activeSlots = 0
+    private var slotWaiters: [CheckedContinuation<Void, Never>] = []
     
     private init() {}
     
+    private func acquireSlot() async {
+        if activeSlots < Self.maxConcurrentJobs {
+            activeSlots += 1
+            return
+        }
+        await withCheckedContinuation { slotWaiters.append($0) }
+    }
+    
+    private func releaseSlot() {
+        if slotWaiters.isEmpty {
+            activeSlots -= 1
+        } else {
+            slotWaiters.removeFirst().resume() // hand the slot straight to the next waiter
+        }
+    }
+    
+    /// Returns once no job is running. A cancelled job deletes its partial output as it stops,
+    /// so quitting waits here instead of exiting mid-cleanup.
+    public func waitUntilIdle() async {
+        while runningJobCount > 0 {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+    
     // MARK: - Cancellation API
     public func cancelJob(id: UUID) {
+        guard activeJobTasks[id] != nil || activeDestinationURLs[id] != nil else { return }
         cancelledJobIds.insert(id)
         if let destURL = activeDestinationURLs[id] {
             try? FileManager.default.removeItem(at: destURL)
@@ -48,18 +79,27 @@ public actor MediaCompressionEngine {
         cancelledJobIds.contains(jobId) || Task.isCancelled || JobControlRegistry.shared.control(for: jobId).isCancelled
     }
     
-    private func registerJobTask(id: UUID, task: Task<Void, Never>) {
+    private func registerJobTask(id: UUID, task: Task<Bool, Never>) {
         activeJobTasks[id] = task
     }
     
     private func unregisterJobTask(id: UUID) {
         activeJobTasks.removeValue(forKey: id)
         activeDestinationURLs.removeValue(forKey: id)
+        cancelledJobIds.remove(id)
+    }
+    
+    /// Pure helper: true when the compressed output saved bytes vs. the source.
+    nonisolated public static func didSaveBytes(originalSize: Int64, compressedSize: Int64) -> Bool {
+        originalSize > 0 && compressedSize > 0 && compressedSize < originalSize
     }
     
     // MARK: - Staged Queue Processing Entry Point (Per-File Custom Configurations)
     public func processStagedItems(_ items: [StagedQueueItem], targetFolderId: UUID? = nil) async {
-        guard !items.isEmpty else { return }
+        guard !items.isEmpty else {
+            await AppState.shared.reportNoSupportedFiles(urls: [])
+            return
+        }
         
         let baseConfig = await AppState.shared.currentConfiguration()
         var jobsToRun: [(url: URL, type: MediaType, jobId: UUID, origSize: Int64, config: CompressionConfiguration)] = []
@@ -85,23 +125,16 @@ public actor MediaCompressionEngine {
             jobsToRun.append((url: item.fileURL, type: mediaType, jobId: jobId, origSize: originalSize, config: itemConfig))
         }
         
-        guard !jobsToRun.isEmpty else { return }
-        
-        let cores = ProcessInfo.processInfo.activeProcessorCount
-        let maxConcurrent: Int = max(2, min(cores <= 8 ? 2 : 4, jobsToRun.count))
+        guard !jobsToRun.isEmpty else {
+            await AppState.shared.reportNoSupportedFiles(urls: items.map(\.fileURL))
+            return
+        }
         
         var anySucceeded = false
         await withTaskGroup(of: Bool.self) { group in
-            var running = 0
             for item in jobsToRun {
-                if running >= maxConcurrent {
-                    if let res = await group.next(), res { anySucceeded = true }
-                    running -= 1
-                }
-                
-                running += 1
                 group.addTask {
-                    let task = Task {
+                    let task = Task { () -> Bool in
                         await self.processSingleFile(
                             url: item.url,
                             mediaType: item.type,
@@ -112,9 +145,9 @@ public actor MediaCompressionEngine {
                         )
                     }
                     await self.registerJobTask(id: item.jobId, task: task)
-                    await task.value
+                    let succeeded = await task.value
                     await self.unregisterJobTask(id: item.jobId)
-                    return true
+                    return succeeded
                 }
             }
             
@@ -132,7 +165,10 @@ public actor MediaCompressionEngine {
     public func processDroppedURLs(_ urls: [URL], targetFolderId: UUID? = nil) async {
         // 1. Gather all individual media files (recursively expanding folders)
         let resolvedFiles = gatherMediaFiles(from: urls)
-        guard !resolvedFiles.isEmpty else { return }
+        guard !resolvedFiles.isEmpty else {
+            await AppState.shared.reportNoSupportedFiles(urls: urls)
+            return
+        }
         
         // 2. Fetch current config from main actor
         let config = await AppState.shared.currentConfiguration()
@@ -158,26 +194,17 @@ public actor MediaCompressionEngine {
             jobsToRun.append((url: url, type: mediaType, jobId: jobId, origSize: originalSize))
         }
         
-        guard !jobsToRun.isEmpty else { return }
+        guard !jobsToRun.isEmpty else {
+            await AppState.shared.reportNoSupportedFiles(urls: urls)
+            return
+        }
         
-        // 4. Adaptive hardware concurrency tuned for Apple Silicon Media Engines:
-        // - 8GB M1/M2: 2 concurrent heavy transcode tasks to prevent memory paging & keep unified memory cool
-        // - 16GB+ M1/M2/M3/M4 Pro/Max: 3-4 concurrent streams for maximum hardware encoder throughput
-        let cores = ProcessInfo.processInfo.activeProcessorCount
-        let maxConcurrent: Int = max(2, min(cores <= 8 ? 2 : 4, jobsToRun.count))
-        
+        // 4. Concurrency is capped app-wide in processSingleFile (acquireSlot).
         var anySucceeded = false
         await withTaskGroup(of: Bool.self) { group in
-            var running = 0
             for item in jobsToRun {
-                if running >= maxConcurrent {
-                    if let res = await group.next(), res { anySucceeded = true }
-                    running -= 1
-                }
-                
-                running += 1
                 group.addTask {
-                    let task = Task {
+                    let task = Task { () -> Bool in
                         await self.processSingleFile(
                             url: item.url,
                             mediaType: item.type,
@@ -188,9 +215,9 @@ public actor MediaCompressionEngine {
                         )
                     }
                     await self.registerJobTask(id: item.jobId, task: task)
-                    await task.value
+                    let succeeded = await task.value
                     await self.unregisterJobTask(id: item.jobId)
-                    return true
+                    return succeeded
                 }
             }
             
@@ -213,11 +240,18 @@ public actor MediaCompressionEngine {
         originalSize: Int64,
         config: CompressionConfiguration,
         targetFolderId: UUID? = nil
-    ) async {
+    ) async -> Bool {
+        await acquireSlot()
+        runningJobCount += 1
+        defer {
+            runningJobCount -= 1
+            releaseSlot()
+        }
+        
         if isCancelled(jobId) {
             cancelledJobIds.remove(jobId)
             await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
-            return
+            return false
         }
         
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
@@ -250,10 +284,16 @@ public actor MediaCompressionEngine {
                 cancelledJobIds.remove(jobId)
                 try? FileManager.default.removeItem(at: destinationURL)
                 await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
-                return
+                return false
             }
             
-            // Permission or write error fallback: attempt writing to ~/Downloads
+            // Fall back to ~/Downloads only when the destination folder can't be written;
+            // other failures (corrupt/unsupported input) would just fail again after a second full encode.
+            guard !FileManager.default.isWritableFile(atPath: destinationURL.deletingLastPathComponent().path) else {
+                try? FileManager.default.removeItem(at: destinationURL)
+                await AppState.shared.finishJob(id: jobId, result: nil, error: error.localizedDescription)
+                return false
+            }
             let downloadsFolder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
             let fallbackURL = generateDestinationURL(for: url, inFolder: downloadsFolder, mediaType: mediaType, config: config)
             
@@ -276,10 +316,10 @@ public actor MediaCompressionEngine {
                     cancelledJobIds.remove(jobId)
                     try? FileManager.default.removeItem(at: destinationURL)
                     await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
-                    return
+                    return false
                 }
                 await AppState.shared.finishJob(id: jobId, result: nil, error: error.localizedDescription)
-                return
+                return false
             }
         }
         
@@ -287,12 +327,24 @@ public actor MediaCompressionEngine {
             cancelledJobIds.remove(jobId)
             try? FileManager.default.removeItem(at: destinationURL)
             await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
-            return
+            return false
         }
         
         let compressedSize = fileSize(of: destinationURL)
         let duration = Date().timeIntervalSince(startTime)
+        if !Self.didSaveBytes(originalSize: originalSize, compressedSize: compressedSize) {
+            try? FileManager.default.removeItem(at: destinationURL)
+            await AppState.shared.finishJob(id: jobId, result: nil, error: nil, statusOverride: String(localized: "Already optimized"))
+            return false
+        }
+        
         let outDim = await probeDimensions(for: destinationURL, mediaType: mediaType)
+        if isCancelled(jobId) {
+            cancelledJobIds.remove(jobId)
+            try? FileManager.default.removeItem(at: destinationURL)
+            await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
+            return false
+        }
         
         let result = CompressionResult(
             originalURL: url,
@@ -307,6 +359,7 @@ public actor MediaCompressionEngine {
         )
         
         await AppState.shared.finishJob(id: jobId, result: result, error: nil)
+        return true
     }
     
     private func executeCompression(
@@ -320,6 +373,9 @@ public actor MediaCompressionEngine {
         let control = JobControlRegistry.shared.control(for: jobId)
         switch mediaType {
         case .image:
+            // Run off the engine actor so images/PDFs encode in parallel and the actor stays responsive.
+            let imageCompressor = self.imageCompressor
+            try await Task.detached(priority: .userInitiated) {
             try imageCompressor.compressImage(
                 from: sourceURL,
                 to: destinationURL,
@@ -331,6 +387,7 @@ public actor MediaCompressionEngine {
                     AppState.shared.updateJob(id: jobId, progress: progress, statusText: String(localized: "Compressing \(Int(progress * 100))%"))
                 }
             }
+            }.value
             
         case .video:
             try await videoCompressor.compressVideo(
@@ -359,6 +416,8 @@ public actor MediaCompressionEngine {
             }
             
         case .pdf:
+            let pdfCompressor = self.pdfCompressor
+            try await Task.detached(priority: .userInitiated) {
             try pdfCompressor.compressPDF(
                 from: sourceURL,
                 to: destinationURL,
@@ -370,6 +429,7 @@ public actor MediaCompressionEngine {
                     AppState.shared.updateJob(id: jobId, progress: progress, statusText: String(localized: "Optimizing PDF \(Int(progress * 100))%"))
                 }
             }
+            }.value
             
         case .unsupported:
             throw NSError(domain: "SqueezeBar", code: 400, userInfo: [NSLocalizedDescriptionKey: String(localized: "Unsupported media format")])
@@ -383,8 +443,10 @@ public actor MediaCompressionEngine {
         mediaType: MediaType,
         config: CompressionConfiguration
     ) -> URL {
+        let isClipboardTemp = sourceURL.lastPathComponent.hasPrefix("clipboard_")
+            && sourceURL.deletingLastPathComponent().standardizedFileURL == FileManager.default.temporaryDirectory.standardizedFileURL
         var folder = customFolder ?? sourceURL.deletingLastPathComponent()
-        if customFolder == nil, let customPath = config.customOutputFolder, !customPath.isEmpty {
+        if !isClipboardTemp, customFolder == nil, let customPath = config.customOutputFolder, !customPath.isEmpty {
             let customDir = URL(fileURLWithPath: customPath)
             if FileManager.default.fileExists(atPath: customDir.path) {
                 folder = customDir
@@ -392,7 +454,7 @@ public actor MediaCompressionEngine {
         }
         
         // Auto-create subfolder (e.g. "Squeezed") if enabled
-        if customFolder == nil && config.exportToSubfolder {
+        if !isClipboardTemp && customFolder == nil && config.exportToSubfolder {
             let subfolderName = config.subfolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Squeezed" : config.subfolderName
             let targetSubfolder = folder.appendingPathComponent(subfolderName)
             if !FileManager.default.fileExists(atPath: targetSubfolder.path) {
@@ -482,11 +544,12 @@ public actor MediaCompressionEngine {
                 
                 // 2. Framerate (FPS)
                 if let nominalFPS = try? await track.load(.nominalFrameRate), nominalFPS > 0 {
+                    let fpsUnit = String(localized: "fps")
                     let roundedFPS: String
                     if abs(nominalFPS - round(nominalFPS)) < 0.05 {
-                        roundedFPS = String(format: "%.0f fps", nominalFPS)
+                        roundedFPS = String(format: "%.0f %@", nominalFPS, fpsUnit)
                     } else {
-                        roundedFPS = String(format: "%.2f fps", nominalFPS)
+                        roundedFPS = String(format: "%.2f %@", nominalFPS, fpsUnit)
                     }
                     infoParts.append(roundedFPS)
                 }
@@ -505,9 +568,9 @@ public actor MediaCompressionEngine {
                 
                 if bitrateBps > 0 {
                     if bitrateBps >= 1_000_000 {
-                        infoParts.append(String(format: "%.1f Mbps", bitrateBps / 1_000_000.0))
+                        infoParts.append(String(format: "%.1f %@", bitrateBps / 1_000_000.0, String(localized: "Mbps")))
                     } else {
-                        infoParts.append(String(format: "%.0f kbps", bitrateBps / 1_000.0))
+                        infoParts.append(String(format: "%.0f %@", bitrateBps / 1_000.0, String(localized: "kbps")))
                     }
                 }
                 
@@ -528,13 +591,14 @@ public actor MediaCompressionEngine {
         case .pdf:
             if let doc = PDFDocument(url: url), doc.pageCount > 0 {
                 let count = doc.pageCount
+                let pageLabel = count == 1 ? String(localized: "Page") : String(localized: "Pages")
                 if let firstPage = doc.page(at: 0) {
                     let b = firstPage.bounds(for: .mediaBox)
                     let w = Int(b.width)
                     let h = Int(b.height)
-                    return "\(count) \(count == 1 ? "Page" : "Pages") • \(w) × \(h) pt"
+                    return "\(count) \(pageLabel) • \(w) × \(h) pt"
                 }
-                return "\(count) \(count == 1 ? "Page" : "Pages")"
+                return "\(count) \(pageLabel)"
             }
             return nil
         case .unsupported:

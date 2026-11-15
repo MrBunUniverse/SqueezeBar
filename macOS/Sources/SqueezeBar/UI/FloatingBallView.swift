@@ -8,6 +8,7 @@ public struct FloatingBallView: View {
     
     @State private var isHovered: Bool = false
     @State private var isDropTargeted: Bool = false
+    @State private var burstProgress: CGFloat = 0
     
     @Environment(\.displayScale) private var displayScale
 
@@ -116,7 +117,25 @@ public struct FloatingBallView: View {
                             AppState.shared.floatingBallEnabled = false
                         }
                     }
+
+                    Divider()
+
+                    Button("Quit SqueezeBar") {
+                        NSApplication.shared.terminate(nil)
+                    }
                 }
+
+            if liquidModel.isBurst {
+                // Centred on where the orb was drawn, in its outline and at its size.
+                PopBurst(progress: burstProgress, shape: orbShape, scaleX: targetScaleX, scaleY: targetScaleY, accent: state.accentColor)
+                    .offset(x: targetXOffset * targetScaleX)
+                    .allowsHitTesting(false)
+                    .onAppear {
+                        withAnimation(.linear(duration: LiquidBallModel.burstDuration)) {
+                            burstProgress = 1
+                        }
+                    }
+            }
         }
         .frame(width: FloatingBallController.panelSize, height: FloatingBallController.panelSize)
         .onChange(of: isDropTargeted) { _, targeted in
@@ -154,7 +173,7 @@ public struct FloatingBallView: View {
         .offset(x: targetXOffset)
         .scaleEffect(x: targetScaleX, y: targetScaleY)
         .rotationEffect(.degrees(liquidModel.rotationAngle))
-        .opacity(isTuckedState ? 0.90 : 1.0)
+        .opacity(liquidModel.isBurst ? 0 : (isTuckedState ? 0.90 : 1.0))
         .animation(currentRevealSpring, value: isTuckedState)
         .animation(currentRevealSpring, value: isHovered)
         .animation(currentRevealSpring, value: isDropTargeted)
@@ -282,17 +301,18 @@ public struct FloatingBallView: View {
     
     private func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {
         var urls: [URL] = []
+        let lock = NSLock()
         let group = DispatchGroup()
         
-        for provider in providers {
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 defer { group.leave() }
-                if let url = item as? URL {
-                    urls.append(url)
-                } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                    urls.append(url)
-                }
+                let url = item as? URL ?? (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                guard let url, url.isFileURL else { return }
+                lock.lock()
+                urls.append(url)
+                lock.unlock()
             }
         }
         
@@ -309,6 +329,59 @@ public struct FloatingBallView: View {
         }
         
         return true
+    }
+}
+
+// The quit pop: the bubble's outline snaps outward while droplets scatter and fade.
+// `progress` runs 0...1 at a constant rate; each part applies its own easing to it.
+struct PopBurst: View, Animatable {
+    var progress: CGFloat
+    let shape: DockedBallShape
+    let scaleX: CGFloat
+    let scaleY: CGFloat
+    let accent: Color
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    // Fixed layout so every pop looks the same: angle in degrees, droplet diameter, travel distance.
+    private static let droplets: [(angle: Double, size: CGFloat, travel: CGFloat)] = [
+        (8, 5.5, 24), (49, 3.5, 18), (86, 6, 26), (128, 4, 20), (171, 5, 23),
+        (212, 3.5, 19), (253, 6, 25), (297, 4, 21), (334, 5, 22)
+    ]
+
+    var body: some View {
+        let radius = FloatingBallController.orbSize / 2
+        // Fast off the rim, slowing as it goes.
+        let flight = 1 - pow(1 - progress, 3)
+        // Stays bright for the first half, gone by the end.
+        let fade = 1 - progress * progress
+        ZStack {
+            shape
+                .stroke(.white.opacity(0.75 * (1 - progress)), lineWidth: 1.4 - progress)
+                .frame(width: radius * 2, height: radius * 2)
+                .scaleEffect(x: scaleX * (1 + 0.32 * flight), y: scaleY * (1 + 0.32 * flight))
+
+            ForEach(Self.droplets.indices, id: \.self) { index in
+                let droplet = Self.droplets[index]
+                let radians = droplet.angle * .pi / 180
+                let travel = droplet.travel * flight
+                Circle()
+                    .fill(index % 3 == 0 ? accent : Color.white.opacity(0.85))
+                    .frame(width: droplet.size, height: droplet.size)
+                    .scaleEffect(1 - 0.65 * progress)
+                    .offset(
+                        x: cos(radians) * (radius * scaleX + travel),
+                        // Droplets sag as they fly, as if they had weight.
+                        y: sin(radians) * (radius * scaleY + travel) + 5 * progress * progress
+                    )
+                    .opacity(fade)
+            }
+        }
+        // Keeps the white parts readable on a light wallpaper, as the orb's own shadow does.
+        .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
     }
 }
 

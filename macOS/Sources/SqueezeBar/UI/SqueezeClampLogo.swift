@@ -58,14 +58,18 @@ struct SqueezeWaveMark: View {
     var period: Double = 6.0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The popover and detached window keep their views alive while ordered out, so the timeline
+    /// would tick forever unless paused when the window isn't on screen.
+    @State private var windowVisible = false
 
     var body: some View {
         if reduceMotion {
             marks(time: nil)
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !windowVisible)) { context in
                 marks(time: context.date.timeIntervalSinceReferenceDate)
             }
+            .background(WindowVisibilityReader(isVisible: $windowVisible))
         }
     }
 
@@ -95,6 +99,49 @@ struct SqueezeWaveMark: View {
         let width = 1.3
         let t = max(0, 1 - d / width)
         return t * t * (3 - 2 * t)
+    }
+}
+
+/// Reports whether the hosting window is on screen and not fully covered.
+private struct WindowVisibilityReader: NSViewRepresentable {
+    @Binding var isVisible: Bool
+
+    func makeNSView(context: Context) -> Probe {
+        let view = Probe()
+        view.onChange = { visible in
+            if isVisible != visible { isVisible = visible }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: Probe, context: Context) {}
+
+    final class Probe: NSView {
+        var onChange: ((Bool) -> Void)?
+        private var observer: NSObjectProtocol?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+            if let window {
+                observer = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.report() }
+                }
+            }
+            // Deferred: this runs inside SwiftUI's view update, where state can't change.
+            DispatchQueue.main.async { [weak self] in self?.report() }
+        }
+
+        private func report() {
+            onChange?(window?.occlusionState.contains(.visible) ?? false)
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
     }
 }
 

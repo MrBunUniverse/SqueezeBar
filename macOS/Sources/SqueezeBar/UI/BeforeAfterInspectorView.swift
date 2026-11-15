@@ -25,6 +25,10 @@ public struct BeforeAfterInspectorView: View {
     @State private var panOffset: CGSize = .zero
     @State private var activeDragOffset: CGSize = .zero
     
+    // History can outlive the files; checked once on load.
+    @State private var originalMissing = false
+    @State private var outputMissing = false
+    
     enum InspectorMode: String, CaseIterable {
         case split = "Split Slider"
         case sideBySide = "Side by Side"
@@ -44,15 +48,12 @@ public struct BeforeAfterInspectorView: View {
     
     public var body: some View {
         VStack(spacing: 0) {
-            // Header Bar (Acts as window drag handle while keeping buttons clickable)
-            headerBar
-                .background(WindowDragRepresentable())
-            
-            Divider()
-                .opacity(0.25)
-            
             // Main Content: Audio Player vs Visual Comparison Canvas
-            if result.mediaType == .audio {
+            if originalMissing || outputMissing {
+                missingFileView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.6))
+            } else if result.mediaType == .audio {
                 audioPlaybackView
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black.opacity(0.65))
@@ -62,6 +63,7 @@ public struct BeforeAfterInspectorView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black.opacity(0.6))
                     .clipped()
+                    .help("Pinch or scroll to zoom, drag to pan, drag the center handle to compare")
             }
             
             // Video Playback Controls Bar (if media is video)
@@ -78,21 +80,11 @@ public struct BeforeAfterInspectorView: View {
             bottomBar
         }
         .frame(minWidth: 680, idealWidth: 860, minHeight: 520, idealHeight: 640)
+        .background(InspectorTitlebar(header: headerBar))
         .background {
-            ZStack {
-                Rectangle()
-                    .fill(Color(nsColor: .windowBackgroundColor).opacity(1 - state.appTransparency))
-                    .allowsHitTesting(false)
-                Rectangle()
-                    .fill(Color.black.opacity(0.35 * state.appTransparency))
-                    .allowsHitTesting(false)
-                if #available(macOS 26.0, *) {
-                    Color.clear
-                        .glassEffect(.clear.tint(Color.black.opacity(0.3)), in: Rectangle())
-                        .opacity(state.appTransparency)
-                        .allowsHitTesting(false)
-                }
-            }
+            Button(action: onClose) { EmptyView() }
+                .keyboardShortcut(.cancelAction)
+                .accessibilityHidden(true)
         }
         .task {
             await loadMedia()
@@ -112,13 +104,27 @@ public struct BeforeAfterInspectorView: View {
         )
     }
     
+    // MARK: - Missing File State
+    private var missingFileView: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "questionmark.folder")
+                .font(.system(size: 34, weight: .regular))
+                .foregroundColor(.secondary)
+            Text(originalMissing && outputMissing
+                 ? "Both files were moved or deleted."
+                 : (originalMissing ? "The original file was moved or deleted." : "The compressed file was moved or deleted."))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+            Text("Nothing to compare. Compress the file again to inspect it.")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundColor(.secondary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(24)
+    }
+    
     // MARK: - Header
     private var headerBar: some View {
         HStack(spacing: 12) {
-            // Spacer to accommodate native macOS window traffic lights inside standard titlebar
-            Spacer()
-                .frame(width: 68)
-            
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.fileName)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -557,6 +563,16 @@ public struct BeforeAfterInspectorView: View {
                         .foregroundColor(.black)
                 )
                 .position(x: lineX, y: height / 2)
+                .accessibilityElement()
+                .accessibilityLabel("Comparison split")
+                .accessibilityValue(Text("\(Int(splitOffset * 100))%"))
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: splitOffset = min(0.98, splitOffset + 0.1)
+                    case .decrement: splitOffset = max(0.02, splitOffset - 0.1)
+                    @unknown default: break
+                    }
+                }
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
@@ -742,6 +758,7 @@ public struct BeforeAfterInspectorView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.space, modifiers: [])
+            .accessibilityLabel(videoEngine.isPlaying ? Text("Pause") : Text("Play"))
             
             Text(videoEngine.formattedCurrentTime)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -759,6 +776,7 @@ public struct BeforeAfterInspectorView: View {
                 in: 0...max(0.1, videoEngine.durationSeconds)
             )
             .accentColor(.blue)
+            .accessibilityLabel("Playback position")
             
             Text(videoEngine.formattedDuration)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -777,6 +795,7 @@ public struct BeforeAfterInspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Loop Playback")
+            .accessibilityLabel("Loop Playback")
             
             Divider()
                 .frame(height: 14)
@@ -792,7 +811,8 @@ public struct BeforeAfterInspectorView: View {
                         .foregroundColor(videoEngine.isMuted ? .red.opacity(0.8) : .secondary)
                 }
                 .buttonStyle(.plain)
-                .help(videoEngine.isMuted ? "Unmute" : "Mute")
+                .help(videoEngine.isMuted ? Text("Unmute") : Text("Mute"))
+                .accessibilityLabel(videoEngine.isMuted ? Text("Unmute") : Text("Mute"))
                 
                 Slider(
                     value: Binding(
@@ -808,6 +828,7 @@ public struct BeforeAfterInspectorView: View {
                 )
                 .frame(width: 65)
                 .accentColor(.blue)
+                .accessibilityLabel("Volume")
             }
         }
         .padding(.horizontal, 16)
@@ -838,7 +859,7 @@ public struct BeforeAfterInspectorView: View {
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
-                        .background(Capsule().fill(Color.white.opacity(0.06)))
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
                     
                     Image(systemName: "arrow.right")
                         .font(.system(size: 8, design: .rounded))
@@ -851,13 +872,6 @@ public struct BeforeAfterInspectorView: View {
                         .padding(.vertical, 2.5)
                         .background(Capsule().fill(state.accentColor.opacity(0.18)))
                 }
-            }
-            
-            if result.mediaType != .audio {
-                Text("Pinch / Scroll to zoom • Drag to pan • Drag center handle to split")
-                    .font(.system(size: 9, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.8))
-                    .padding(.leading, 4)
             }
             
             Spacer()
@@ -873,9 +887,10 @@ public struct BeforeAfterInspectorView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(Capsule().fill(Color.white.opacity(0.06)))
+                .background(Capsule().fill(Color.primary.opacity(0.06)))
             }
             .buttonStyle(.plain)
+            .disabled(outputMissing)
             
             Button {
                 let pb = NSPasteboard.general
@@ -894,12 +909,18 @@ public struct BeforeAfterInspectorView: View {
                 .background(Capsule().fill(state.accentColor))
             }
             .buttonStyle(.plain)
+            .disabled(outputMissing)
+            .opacity(outputMissing ? 0.4 : 1)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
     
     private func loadMedia() async {
+        originalMissing = !FileManager.default.fileExists(atPath: result.originalURL.path)
+        outputMissing = !FileManager.default.fileExists(atPath: result.outputURL.path)
+        guard !originalMissing, !outputMissing else { return }
+        
         if result.mediaType == .video {
             await videoEngine.load(originalURL: result.originalURL, compressedURL: result.outputURL)
         } else if result.mediaType == .audio {
@@ -1153,8 +1174,8 @@ private final class SynchronizedVideoEngine: ObservableObject {
             }
         }
         
-        // Autoplay initial preview
-        play()
+        // Autoplay only once the asset proved readable; otherwise the UI shows "playing" at 00:00.
+        if durationSeconds > 0 { play() }
     }
     
     func play() {
@@ -1392,18 +1413,43 @@ private class InteractiveZoomPanNSView: NSView {
     }
 }
 
-// MARK: - Window Drag Handler (Only header drags the window)
-private struct WindowDragRepresentable: NSViewRepresentable {
-    func makeNSView(context: Context) -> WindowDragView {
-        WindowDragView()
+// AppKit owns the title-bar surface and window gestures.
+private struct InspectorTitlebar<Header: View>: NSViewRepresentable {
+    var header: Header
+
+    func makeNSView(context: Context) -> TitlebarAttachment<Header> {
+        TitlebarAttachment(header: header)
     }
-    
-    func updateNSView(_ nsView: WindowDragView, context: Context) {}
+
+    func updateNSView(_ view: TitlebarAttachment<Header>, context: Context) {
+        view.host.rootView = header
+    }
 }
 
-private class WindowDragView: NSView {
-    override var mouseDownCanMoveWindow: Bool {
-        return true
+private final class TitlebarHostingView<Content: View>: NSHostingView<Content> {
+    override var mouseDownCanMoveWindow: Bool { true }
+}
+
+private final class TitlebarAttachment<Header: View>: NSView {
+    let host: TitlebarHostingView<Header>
+    private let accessory = NSTitlebarAccessoryViewController()
+
+    init(header: Header) {
+        host = TitlebarHostingView(rootView: header)
+        super.init(frame: .zero)
+        host.frame = NSRect(x: 0, y: 0, width: 840, height: 52)
+        host.autoresizingMask = [.width]
+        accessory.view = host
+        accessory.layoutAttribute = .bottom
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window, !window.titlebarAccessoryViewControllers.contains(accessory) {
+            window.addTitlebarAccessoryViewController(accessory)
+        }
     }
 }
 
@@ -1452,13 +1498,15 @@ public final class InspectorWindowController: NSObject, NSWindowDelegate {
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
+        win.toolbar = NSToolbar(identifier: "InspectorToolbar")
+        win.toolbarStyle = .unified
         
         // Disable full-window background dragging so image panning works without moving window
         win.isMovableByWindowBackground = false
         
         win.level = .floating
-        win.backgroundColor = .clear
-        win.isOpaque = false
+        win.backgroundColor = .windowBackgroundColor
+        win.isOpaque = true
         win.hasShadow = true
         win.setContentSize(NSSize(width: 840, height: 600))
         win.center()

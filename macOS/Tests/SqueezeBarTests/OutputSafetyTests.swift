@@ -42,6 +42,13 @@ final class DestinationNamingTests: XCTestCase {
         XCTAssertEqual(out.lastPathComponent, "clip (1).mp4")
     }
 
+    func testWatchFolderSuffixSkip() {
+        XCTAssertFalse(FolderWatchService.shouldSkip(fileName: "admin_minutes.pdf", suffix: "_min"))
+        XCTAssertTrue(FolderWatchService.shouldSkip(fileName: "photo_min.jpg", suffix: "_min"))
+        XCTAssertTrue(FolderWatchService.shouldSkip(fileName: ".DS_Store", suffix: "_min"))
+        XCTAssertTrue(FolderWatchService.shouldSkip(fileName: "clipboard_123.png", suffix: "_min"))
+    }
+
     func testVideoCompressorRefusesToOverwriteSource() async throws {
         let src = dir.appendingPathComponent("clip.mp4")
         let payload = Data("original".utf8)
@@ -113,5 +120,40 @@ final class BatchRenameTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: blocker), Data("keep me".utf8))
         XCTAssertEqual(AppState.shared.recentResults[0].outputURL, r.outputURL)
         XCTAssertTrue(FileManager.default.fileExists(atPath: r.outputURL.path))
+    }
+
+    func testLargerOrEqualOutputDecisionAndLifecycle() {
+        XCTAssertTrue(MediaCompressionEngine.didSaveBytes(originalSize: 1000, compressedSize: 999))
+        XCTAssertFalse(MediaCompressionEngine.didSaveBytes(originalSize: 1000, compressedSize: 1000))
+        XCTAssertFalse(MediaCompressionEngine.didSaveBytes(originalSize: 1000, compressedSize: 1200))
+        XCTAssertFalse(MediaCompressionEngine.didSaveBytes(originalSize: 1000, compressedSize: 0))
+
+        let state = AppState.shared
+        let savedJobs = state.activeJobs
+        let savedFailures = state.failedJobs
+        let initialCount = state.recentResults.count
+        defer {
+            state.activeJobs = savedJobs
+            state.failedJobs = savedFailures
+        }
+
+        let jobId = UUID()
+        let url = dir.appendingPathComponent("small.jpg")
+        state.addJob(CompressionJob(id: jobId, fileURL: url, mediaType: .image))
+        state.finishJob(id: jobId, result: nil, error: nil, statusOverride: String(localized: "Already optimized"))
+
+        let finished = state.activeJobs.first { $0.id == jobId }
+        XCTAssertEqual(finished?.isFinished, true)
+        XCTAssertNil(finished?.error)
+        XCTAssertEqual(finished?.statusText, String(localized: "Already optimized"))
+        XCTAssertEqual(state.recentResults.count, initialCount)
+        XCTAssertEqual(state.failedJobs.count, savedFailures.count)
+
+        // Cancelling an already-finished job is a no-op and does not overwrite its status or leak a cancelled JobControl.
+        state.cancelJob(id: jobId)
+        XCTAssertNil(state.activeJobs.first { $0.id == jobId }?.error)
+        XCTAssertEqual(state.activeJobs.first { $0.id == jobId }?.statusText, String(localized: "Already optimized"))
+        XCTAssertFalse(JobControlRegistry.shared.control(for: jobId).isCancelled)
+        JobControlRegistry.shared.remove(jobId)
     }
 }

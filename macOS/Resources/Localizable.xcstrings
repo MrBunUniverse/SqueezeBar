@@ -24,22 +24,56 @@
     "%@ Settings" : {
 
     },
-    "%@.mp4,  %@.mp4 ..." : {
+    "%@ larger" : {
+
+    },
+    "%@%@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@.mp4,  %2$@.mp4 ..."
+            "value" : "%1$@%2$@"
           }
         }
-      },
-      "shouldTranslate" : false
+      }
+    },
+    "%@%@,  %@%@ ..." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@%2$@,  %3$@%4$@ ..."
+          }
+        }
+      }
     },
     "%lld DPI" : {
 
     },
     "%lld MB" : {
 
+    },
+    "%lld compressions are still running. Quitting cancels them." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld compression is still running. Quitting cancels it."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld compressions are still running. Quitting cancels them."
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "%lld percent" : {
 
@@ -54,6 +88,9 @@
 
     },
     "%lld%% quality" : {
+
+    },
+    "%lld%% quality · Grayscale" : {
 
     },
     "%lld%% · %lld%% size" : {
@@ -78,6 +115,147 @@
     "007AFF" : {
       "shouldTranslate" : false
     },
+    "10 FPS" : {
+
+    },
+    "10 MB (Email)" : {
+
+    },
+    "100%" : {
+
+    },
+    "10MB" : {
+
+    },
+    "12 FPS" : {
+
+    },
+    "128 kbps" : {
+
+    },
+    "128 kbps (Standard)" : {
+
+    },
+    "15 FPS" : {
+
+    },
+    "15 FPS (Half)" : {
+
+    },
+    "150 DPI (Balanced)" : {
+
+    },
+    "150 DPI (Screen)" : {
+
+    },
+    "16 kbps" : {
+
+    },
+    "16 kbps (Crushed Meme)" : {
+
+    },
+    "192 kbps" : {
+
+    },
+    "192 kbps (High)" : {
+
+    },
+    "192 kbps (Quality)" : {
+
+    },
+    "2 MB (Fast Web)" : {
+
+    },
+    "200 DPI (High)" : {
+
+    },
+    "200 DPI (Standard)" : {
+
+    },
+    "24 FPS" : {
+
+    },
+    "25 FPS" : {
+
+    },
+    "25 MB (Discord)" : {
+
+    },
+    "25%" : {
+
+    },
+    "256 kbps" : {
+
+    },
+    "256 kbps (High)" : {
+
+    },
+    "256 kbps (Studio)" : {
+
+    },
+    "25MB" : {
+
+    },
+    "30 FPS" : {
+
+    },
+    "300 DPI (Print)" : {
+
+    },
+    "32 kbps" : {
+
+    },
+    "32 kbps (Lo-Fi Radio)" : {
+
+    },
+    "320 kbps" : {
+
+    },
+    "320 kbps (Max)" : {
+
+    },
+    "320 kbps (Studio)" : {
+
+    },
+    "50 FPS" : {
+
+    },
+    "50 MB (Nitro / Slack)" : {
+
+    },
+    "50%" : {
+
+    },
+    "50MB" : {
+
+    },
+    "60 FPS" : {
+
+    },
+    "64 kbps" : {
+
+    },
+    "64 kbps (Compact)" : {
+
+    },
+    "64 kbps (Voice)" : {
+
+    },
+    "72 DPI (Compact)" : {
+
+    },
+    "72 DPI (Screen)" : {
+
+    },
+    "75%" : {
+
+    },
+    "8-Bit" : {
+
+    },
+    "8-Bit Arcade" : {
+
+    },
     "Accent color" : {
 
     },
@@ -87,7 +265,19 @@
     "Add Files" : {
 
     },
+    "Allow Folder Access" : {
+
+    },
+    "Allow access to a folder you choose." : {
+
+    },
     "Allows smart downscaling + bitrate reduction" : {
+
+    },
+    "Already optimized" : {
+
+    },
+    "Animated GIF" : {
 
     },
     "App & Theme Settings" : {
@@ -99,6 +289,9 @@
     "Appearance" : {
 
     },
+    "Applies to images. Location data is always removed." : {
+
+    },
     "Audio" : {
 
     },
@@ -106,6 +299,15 @@
 
     },
     "Audio Studio" : {
+
+    },
+    "Audio bitrate is chosen automatically to fit the limit." : {
+
+    },
+    "Audio compression cancelled" : {
+
+    },
+    "Audio compression failed: %@" : {
 
     },
     "Auto-squeeze watch folder" : {
@@ -127,10 +329,25 @@
     "BETA" : {
 
     },
+    "Balanced" : {
+
+    },
     "Batch Format Rename (%lld files)" : {
 
     },
+    "Blue" : {
+
+    },
     "Blur" : {
+
+    },
+    "Both files were moved or deleted." : {
+
+    },
+    "Bubble" : {
+
+    },
+    "Bubble Pop" : {
 
     },
     "Cancel" : {
@@ -160,6 +377,18 @@
     "Change…" : {
 
     },
+    "Choose a folder to allow access to your media files." : {
+
+    },
+    "Choose a folder to enable access. Turn off to forget this folder authorization." : {
+
+    },
+    "Choose the folder SqueezeBar can read and write." : {
+
+    },
+    "Choose the folder again to restore file access." : {
+
+    },
     "Choose…" : {
 
     },
@@ -167,6 +396,9 @@
 
     },
     "Clear All History" : {
+
+    },
+    "Clear Compression History" : {
 
     },
     "Clear History…" : {
@@ -178,10 +410,19 @@
     "Click to toggle %@ compression settings" : {
 
     },
+    "Clipboard" : {
+
+    },
+    "Clipboard has no image or files" : {
+
+    },
     "Collapse Format Controls" : {
 
     },
     "Compare before and after" : {
+
+    },
+    "Comparison split" : {
 
     },
     "Complete" : {
@@ -199,16 +440,37 @@
     "Compresses new files added to this folder" : {
 
     },
+    "Compressing %lld%%" : {
+
+    },
+    "Compressing..." : {
+
+    },
+    "Compression cancelled" : {
+
+    },
+    "Continue" : {
+
+    },
+    "Convert to Grayscale" : {
+
+    },
     "Convert to Grayscale (B&W)" : {
 
     },
     "Converts scans & images to monochrome for extra reduction" : {
 
     },
+    "Copy" : {
+
+    },
     "Copy File" : {
 
     },
     "Couldn't compress" : {
+
+    },
+    "Couldn’t access that folder. Please choose another folder." : {
 
     },
     "Create" : {
@@ -220,6 +482,12 @@
     "Create subfolder for compressed files" : {
 
     },
+    "Crystal" : {
+
+    },
+    "Crystal Glass (Default)" : {
+
+    },
     "Current queue" : {
 
     },
@@ -229,10 +497,19 @@
     "Custom Color Wheel & Spectrum" : {
 
     },
+    "Custom MB Limit" : {
+
+    },
     "Custom Max Size" : {
 
     },
     "Custom directory" : {
+
+    },
+    "Cut" : {
+
+    },
+    "DPI and image quality act as upper limits; they're lowered only if needed." : {
 
     },
     "DROP" : {
@@ -244,13 +521,13 @@
     "Delete Folder" : {
 
     },
-    "Delete Selected" : {
-
-    },
     "Deselect All" : {
 
     },
     "Deselect item" : {
+
+    },
+    "Detach Floating Window" : {
 
     },
     "Dismiss" : {
@@ -316,16 +593,67 @@
     "Edit" : {
 
     },
+    "Encoding %lld%%" : {
+
+    },
     "Enter a format pattern. Use '#' or '{index}' for auto-incrementing numbers." : {
 
     },
     "Failed" : {
 
     },
+    "Failed appending audio buffer" : {
+
+    },
+    "Failed appending video buffer" : {
+
+    },
+    "Failed to append audio sample buffer" : {
+
+    },
+    "Failed to create destination image container" : {
+
+    },
+    "Failed to encode and write compressed image" : {
+
+    },
+    "Failed to finalize animated GIF" : {
+
+    },
+    "Failed to finalize video" : {
+
+    },
+    "Failed to initialize AVAssetReader" : {
+
+    },
+    "Failed to initialize AVAssetReader for audio" : {
+
+    },
+    "Failed to initialize AVAssetWriter" : {
+
+    },
+    "Failed to initialize AVAssetWriter for audio" : {
+
+    },
+    "Failed to open image source" : {
+
+    },
     "Failed to render or compress PDF pages." : {
 
     },
     "Failed to save the compressed PDF to destination." : {
+
+    },
+    "Failed to start audio reader" : {
+
+    },
+    "Failed to start audio writer" : {
+
+    },
+    "Failed to start reading frames for GIF" : {
+
+    },
+    "File access" : {
 
     },
     "Finder right-click quick action" : {
@@ -349,10 +677,31 @@
     "Framerate (FPS)" : {
 
     },
+    "Full FPS" : {
+
+    },
     "GIF Framerate" : {
 
     },
     "General" : {
+
+    },
+    "Graphite" : {
+
+    },
+    "Green" : {
+
+    },
+    "H.264 / AVC" : {
+
+    },
+    "H.264 Universal" : {
+
+    },
+    "HEVC (H.265)" : {
+
+    },
+    "HEVC / H.265" : {
 
     },
     "HEX code" : {
@@ -361,16 +710,34 @@
     "Haptic feedback on completion" : {
 
     },
+    "Hero" : {
+
+    },
+    "Hero Fanfare" : {
+
+    },
+    "Hide Desktop Drop Ball" : {
+
+    },
     "Hide DropBall" : {
 
     },
     "Homerenovation_#" : {
       "shouldTranslate" : false
     },
+    "Hydraulic" : {
+
+    },
+    "Hydraulic Squeeze" : {
+
+    },
     "Image Compression Quality" : {
 
     },
     "Image Quality" : {
+
+    },
+    "Image quality is chosen automatically to fit the limit." : {
 
     },
     "Images" : {
@@ -385,6 +752,9 @@
     "Interface scaling" : {
 
     },
+    "Invalid or corrupt image data" : {
+
+    },
     "Keeps 100% dimensions and compresses quality/bitrate" : {
 
     },
@@ -392,6 +762,9 @@
 
     },
     "LIVE PREVIEW:" : {
+
+    },
+    "Large" : {
 
     },
     "Launch at system startup" : {
@@ -412,13 +785,34 @@
     "Manual" : {
 
     },
+    "Manual Mode" : {
+
+    },
     "Manual Quality" : {
+
+    },
+    "Max Compression" : {
+
+    },
+    "Mbps" : {
+
+    },
+    "Medium" : {
 
     },
     "Metadata kept" : {
 
     },
     "Metadata removed" : {
+
+    },
+    "Modern AVIF" : {
+
+    },
+    "Modern HEIC" : {
+
+    },
+    "Modern WebP" : {
 
     },
     "Move" : {
@@ -436,10 +830,28 @@
     "Next to original" : {
 
     },
+    "No audio track found in file" : {
+
+    },
     "No folder selected" : {
 
     },
+    "No frames extracted from video" : {
+
+    },
+    "No supported files" : {
+
+    },
+    "No valid image frame found in file" : {
+
+    },
+    "No valid video track found in file" : {
+
+    },
     "None (Uncategorized)" : {
+
+    },
+    "Nothing to compare. Compress the file again to inspect it." : {
 
     },
     "OPTIMIZED" : {
@@ -454,6 +866,9 @@
     "Off" : {
 
     },
+    "On" : {
+
+    },
     "Open Anchored Color Wheel" : {
 
     },
@@ -463,10 +878,25 @@
     "Open SqueezeBar" : {
 
     },
+    "Open SqueezeBar Hub" : {
+
+    },
     "Optimized_{index}" : {
       "shouldTranslate" : false
     },
+    "Optimizing PDF %lld%%" : {
+
+    },
     "Optimizing..." : {
+
+    },
+    "Orange" : {
+
+    },
+    "Orig." : {
+
+    },
+    "Original" : {
 
     },
     "Original (100%)" : {
@@ -478,7 +908,34 @@
     "Output" : {
 
     },
+    "Output Format" : {
+
+    },
     "Output file suffix" : {
+
+    },
+    "Output would overwrite the original file" : {
+
+    },
+    "PDF Render DPI" : {
+
+    },
+    "PNG" : {
+
+    },
+    "Page" : {
+
+    },
+    "Pages" : {
+
+    },
+    "Pages are re-rendered as images; text won't be selectable." : {
+
+    },
+    "Paste" : {
+
+    },
+    "Pause" : {
 
     },
     "Pause %@" : {
@@ -499,13 +956,49 @@
     "Pick color from screen" : {
 
     },
-    "Pinch / Scroll to zoom • Drag to pan • Drag center handle to split" : {
+    "Pinch or scroll to zoom, drag to pan, drag the center handle to compare" : {
+
+    },
+    "Pink" : {
+
+    },
+    "Play" : {
+
+    },
+    "Playback position" : {
 
     },
     "Plays dynamic audio feedback upon completing batch or single file squeezes." : {
 
     },
+    "Preserve Original" : {
+
+    },
+    "Project %lld" : {
+
+    },
+    "Purple" : {
+
+    },
+    "Quality" : {
+
+    },
+    "Queued" : {
+
+    },
     "Quit" : {
+
+    },
+    "Quit SqueezeBar" : {
+
+    },
+    "Quit SqueezeBar?" : {
+
+    },
+    "Reader failed during audio processing" : {
+
+    },
+    "Reader failed during video processing" : {
 
     },
     "Recent" : {
@@ -514,10 +1007,25 @@
     "Recent actions" : {
 
     },
+    "Red" : {
+
+    },
+    "Redo" : {
+
+    },
     "Release to Squeeze" : {
 
     },
     "Release to drop into %@" : {
+
+    },
+    "Remove Audio Track" : {
+
+    },
+    "Remove GPS, camera, and author metadata" : {
+
+    },
+    "Remove from History" : {
 
     },
     "Removes author info and embedded thumbnail bloat" : {
@@ -596,6 +1104,12 @@
     "Scale, glass, accent color" : {
 
     },
+    "Sci-Fi" : {
+
+    },
+    "Sci-Fi Warp" : {
+
+    },
     "Select All" : {
 
     },
@@ -614,7 +1128,13 @@
     "Shading" : {
 
     },
+    "Show Desktop Drop Ball" : {
+
+    },
     "Side by Side" : {
+
+    },
+    "Small" : {
 
     },
     "Sound chime on completion" : {
@@ -635,7 +1155,7 @@
     "SqueezeBar DropBall" : {
 
     },
-    "SqueezeBar v1.1.0 • SirJameTV" : {
+    "SqueezeBar v1.2.1 • SirJameTV" : {
 
     },
     "Squeezed" : {
@@ -647,7 +1167,16 @@
     "Staged Queue (%lld)" : {
 
     },
+    "Start reading error" : {
+
+    },
+    "Start writing error" : {
+
+    },
     "Strip Document Metadata" : {
+
+    },
+    "Strip EXIF & Metadata" : {
 
     },
     "Strip EXIF / metadata" : {
@@ -657,6 +1186,12 @@
 
     },
     "Target Size Limit" : {
+
+    },
+    "The compressed file was moved or deleted." : {
+
+    },
+    "The original file was moved or deleted." : {
 
     },
     "This will remove recent items from your activity log. Original files on disk will not be deleted." : {
@@ -671,16 +1206,31 @@
     "Unable to open or parse the PDF document." : {
 
     },
+    "Unable to open or read audio source file" : {
+
+    },
+    "Unable to open or read video source file" : {
+
+    },
     "Uncategorized" : {
 
     },
-    "Undock as Floating Window" : {
+    "Undo" : {
 
     },
     "Universal Media Optimizer" : {
 
     },
+    "Unknown failure" : {
+
+    },
+    "Unknown writer termination" : {
+
+    },
     "Unmute" : {
+
+    },
+    "Unsupported media format" : {
 
     },
     "Video" : {
@@ -689,7 +1239,34 @@
     "Video Bitrate" : {
 
     },
+    "Video Codec" : {
+
+    },
+    "Video bitrate is chosen automatically to fit the limit." : {
+
+    },
+    "Video encoding failed: %@" : {
+
+    },
+    "Visually Lossless" : {
+
+    },
+    "Volume" : {
+
+    },
+    "Web JPEG" : {
+
+    },
+    "WebP isn't supported by macOS; files are saved as HEIC." : {
+
+    },
+    "Welcome" : {
+
+    },
     "Welcome & file access" : {
+
+    },
+    "Welcome to SqueezeBar" : {
 
     },
     "Window blur" : {
@@ -701,11 +1278,29 @@
     "Window shading" : {
 
     },
+    "Yellow" : {
+
+    },
+    "You can also select files later." : {
+
+    },
     "_min" : {
       "shouldTranslate" : false
     },
+    "bitrate" : {
+
+    },
     "e.g. Homerenovation_# or Project_{index}" : {
       "shouldTranslate" : false
+    },
+    "fps" : {
+
+    },
+    "kbps" : {
+
+    },
+    "quality" : {
+
     },
     "·  %@" : {
       "shouldTranslate" : false
