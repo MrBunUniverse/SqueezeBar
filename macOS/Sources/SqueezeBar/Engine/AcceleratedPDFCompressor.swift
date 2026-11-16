@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 
 public enum PDFCompressorError: LocalizedError, Sendable {
     case invalidDocument
+    case passwordProtected
     case cannotCreatePage
     case cannotWriteDestination
     
@@ -14,6 +15,8 @@ public enum PDFCompressorError: LocalizedError, Sendable {
         switch self {
         case .invalidDocument:
             return String(localized: "Unable to open or parse the PDF document.")
+        case .passwordProtected:
+            return String(localized: "This PDF is password-protected. Remove the password, then try again.")
         case .cannotCreatePage:
             return String(localized: "Failed to render or compress PDF pages.")
         case .cannotWriteDestination:
@@ -38,6 +41,10 @@ public struct AcceleratedPDFCompressor: Sendable {
     ) throws {
         guard let sourceDoc = PDFDocument(url: sourceURL), sourceDoc.pageCount > 0 else {
             throw PDFCompressorError.invalidDocument
+        }
+        // A locked PDF renders as blank pages; refuse rather than save an empty, unprotected copy.
+        guard !sourceDoc.isLocked else {
+            throw PDFCompressorError.passwordProtected
         }
         
         let totalPages = sourceDoc.pageCount
@@ -70,8 +77,17 @@ public struct AcceleratedPDFCompressor: Sendable {
         
         for index in 0..<totalPages {
             if control?.isCancelled == true { throw CancellationError() }
-            autoreleasepool {
-                guard let page = sourceDoc.page(at: index) else { return }
+            try autoreleasepool {
+                guard let page = sourceDoc.page(at: index) else { throw PDFCompressorError.cannotCreatePage }
+                
+                // Text and vector pages are copied as they are: rendering them to JPEG loses the text and usually grows the file.
+                if let cgPage = page.pageRef, !Self.pageHasImages(cgPage) {
+                    guard let copy = page.copy() as? PDFPage else { throw PDFCompressorError.cannotCreatePage }
+                    outputDoc.insert(copy, at: outputDoc.pageCount)
+                    progressHandler(Double(index + 1) / Double(totalPages))
+                    return
+                }
+                
                 let mediaBounds = page.bounds(for: .mediaBox)
                 let pageRotation = page.rotation
                 if pageRotation != 0 {
@@ -102,7 +118,7 @@ public struct AcceleratedPDFCompressor: Sendable {
                     space: colorSpace,
                     bitmapInfo: bitmapInfo
                 ) else {
-                    return
+                    throw PDFCompressorError.cannotCreatePage
                 }
                 
                 context.interpolationQuality = .high
@@ -122,7 +138,7 @@ public struct AcceleratedPDFCompressor: Sendable {
                 context.restoreGState()
                 
                 guard let cgImage = context.makeImage() else {
-                    return
+                    throw PDFCompressorError.cannotCreatePage
                 }
                 
                 // JPEG Recompression of page image
@@ -133,7 +149,7 @@ public struct AcceleratedPDFCompressor: Sendable {
                     1,
                     nil
                 ) else {
-                    return
+                    throw PDFCompressorError.cannotCreatePage
                 }
                 
                 let options: [CFString: Any] = [
@@ -144,7 +160,7 @@ public struct AcceleratedPDFCompressor: Sendable {
                 
                 guard let compressedImage = NSImage(data: imgData as Data),
                       let newPage = PDFPage(image: compressedImage) else {
-                    return
+                    throw PDFCompressorError.cannotCreatePage
                 }
                 
                 newPage.setBounds(mediaBounds, for: .mediaBox)
@@ -176,5 +192,46 @@ public struct AcceleratedPDFCompressor: Sendable {
         if !success {
             throw PDFCompressorError.cannotWriteDestination
         }
+    }
+    
+    /// Whether the page draws a raster image (an Image XObject, directly or inside a Form XObject).
+    /// ponytail: inline images (BI…EI in the content stream) aren't seen, so such pages are kept as they are.
+    static func pageHasImages(_ page: CGPDFPage) -> Bool {
+        // Resources can be inherited from the page tree, so walk up through Parent.
+        var node = page.dictionary
+        while let current = node {
+            var resources: CGPDFDictionaryRef?
+            if CGPDFDictionaryGetDictionary(current, "Resources", &resources), let resources {
+                return resourcesHaveImages(resources, depth: 0)
+            }
+            var parent: CGPDFDictionaryRef?
+            node = CGPDFDictionaryGetDictionary(current, "Parent", &parent) ? parent : nil
+        }
+        return false
+    }
+    
+    private static func resourcesHaveImages(_ resources: CGPDFDictionaryRef, depth: Int) -> Bool {
+        var xobjects: CGPDFDictionaryRef?
+        guard depth < 4, CGPDFDictionaryGetDictionary(resources, "XObject", &xobjects), let xobjects else { return false }
+        var found = false
+        CGPDFDictionaryApplyBlock(xobjects, { _, object, _ in
+            var stream: CGPDFStreamRef?
+            guard CGPDFObjectGetValue(object, .stream, &stream), let stream, let dict = CGPDFStreamGetDictionary(stream) else { return true }
+            var subtype: UnsafePointer<CChar>?
+            guard CGPDFDictionaryGetName(dict, "Subtype", &subtype), let subtype else { return true }
+            switch String(cString: subtype) {
+            case "Image":
+                found = true
+            case "Form":
+                var formResources: CGPDFDictionaryRef?
+                if CGPDFDictionaryGetDictionary(dict, "Resources", &formResources), let formResources {
+                    found = resourcesHaveImages(formResources, depth: depth + 1)
+                }
+            default:
+                break
+            }
+            return !found
+        }, nil)
+        return found
     }
 }

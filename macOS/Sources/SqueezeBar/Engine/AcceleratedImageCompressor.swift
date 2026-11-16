@@ -403,6 +403,11 @@ public struct AcceleratedImageCompressor: Sendable {
     // MARK: - TARGET TYPE RESOLUTION
     // ==========================================================================
     
+    /// Whether this Mac's ImageIO can encode the type (it reads WebP but cannot write it).
+    public static func canWrite(_ type: UTType) -> Bool {
+        ((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? []).contains(type.identifier)
+    }
+    
     private static func writableDestinationType(_ preferred: UTType, supported: Set<String>) -> UTType {
         if supported.contains(preferred.identifier) {
             return preferred

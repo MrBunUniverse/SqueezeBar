@@ -50,35 +50,25 @@ public actor MediaCompressionEngine {
     }
     
     // MARK: - Cancellation API
+    // Cancel only stops the task; processSingleFile deletes its own partial output.
     public func cancelJob(id: UUID) {
         guard activeJobTasks[id] != nil || activeDestinationURLs[id] != nil else { return }
         cancelledJobIds.insert(id)
-        if let destURL = activeDestinationURLs[id] {
-            try? FileManager.default.removeItem(at: destURL)
-            activeDestinationURLs.removeValue(forKey: id)
-        }
-        if let task = activeJobTasks[id] {
-            task.cancel()
-            activeJobTasks.removeValue(forKey: id)
-        }
+        activeJobTasks[id]?.cancel()
     }
-    
+
     public func cancelAllJobs() {
         for (id, task) in activeJobTasks {
             cancelledJobIds.insert(id)
             task.cancel()
-            if let destURL = activeDestinationURLs[id] {
-                try? FileManager.default.removeItem(at: destURL)
-            }
         }
-        activeJobTasks.removeAll()
-        activeDestinationURLs.removeAll()
     }
-    
+
+
     private func isCancelled(_ jobId: UUID) -> Bool {
         cancelledJobIds.contains(jobId) || Task.isCancelled || JobControlRegistry.shared.control(for: jobId).isCancelled
     }
-    
+
     private func registerJobTask(id: UUID, task: Task<Bool, Never>) {
         activeJobTasks[id] = task
     }
@@ -193,13 +183,14 @@ public actor MediaCompressionEngine {
             }
         }
         
-        // Trigger success feedback on UI only if at least one job actually saved bytes
+        // The chime is for files that were actually saved, not for failures or cancels.
         if anySucceeded {
             await AppState.shared.triggerSuccessBadge()
         }
     }
     
     // MARK: - Single File Processing
+    /// Returns true when a smaller copy was saved.
     private func processSingleFile(
         url: URL,
         mediaType: MediaType,
@@ -232,82 +223,55 @@ public actor MediaCompressionEngine {
         let sourceAsset = mediaType == .video ? AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]) : nil
         let origDim = await probeDimensions(for: url, mediaType: mediaType, preloadedAsset: sourceAsset)
         let startTime = Date()
-        var destinationURL = generateDestinationURL(for: url, mediaType: mediaType, config: config)
+        let destinationURL = generateDestinationURL(for: url, mediaType: mediaType, config: config)
         activeDestinationURLs[jobId] = destinationURL
+        // Encoders write to a hidden file next to the output; it only gets the real name once it is complete,
+        // so a failure, cancel or quit never leaves a broken file that looks like a finished one.
+        let partialURL = destinationURL.deletingLastPathComponent().appendingPathComponent(".\(destinationURL.lastPathComponent)")
         
-        await AppState.shared.updateJob(id: jobId, progress: 0.05, statusText: String(localized: "Compressing..."))
+        let savingElsewhere = destinationURL.deletingLastPathComponent() == Self.downloadsFolder
+            && url.deletingLastPathComponent() != Self.downloadsFolder
+        await AppState.shared.updateJob(
+            id: jobId,
+            progress: 0.05,
+            statusText: savingElsewhere ? String(localized: "Folder is read-only, saving to Downloads...") : String(localized: "Compressing...")
+        )
         
         do {
-            if isCancelled(jobId) {
-                throw NSError(domain: "SqueezeBar", code: -999, userInfo: [NSLocalizedDescriptionKey: "Cancelled"])
-            }
+            if isCancelled(jobId) { throw CancellationError() }
             try await executeCompression(
                 sourceURL: url,
-                destinationURL: destinationURL,
+                destinationURL: partialURL,
                 mediaType: mediaType,
                 config: config,
                 sourceAsset: sourceAsset,
                 jobId: jobId
             )
+            if isCancelled(jobId) { throw CancellationError() }
+            
+            // A copy that isn't smaller is useless, unless the user asked for a different format.
+            let convertedOnRequest = (mediaType == .image && config.imageFormatPolicy != .preserveOriginal)
+                || (mediaType == .video && config.videoCodec == .gif)
+            let partialSize = fileSize(of: partialURL)
+            if partialSize == 0 || (!convertedOnRequest && !Self.didSaveBytes(originalSize: originalSize, compressedSize: partialSize)) {
+                try? FileManager.default.removeItem(at: partialURL)
+                await AppState.shared.finishJob(id: jobId, result: nil, error: nil, statusOverride: String(localized: "Already optimized"))
+                return false
+            }
+            try FileManager.default.moveItem(at: partialURL, to: destinationURL)
         } catch {
+            try? FileManager.default.removeItem(at: partialURL)
             if isCancelled(jobId) {
                 cancelledJobIds.remove(jobId)
-                try? FileManager.default.removeItem(at: destinationURL)
                 await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
-                return false
-            }
-            
-            // Fall back to ~/Downloads only when the destination folder can't be written;
-            // other failures (corrupt/unsupported input) would just fail again after a second full encode.
-            guard !FileManager.default.isWritableFile(atPath: destinationURL.deletingLastPathComponent().path) else {
-                try? FileManager.default.removeItem(at: destinationURL)
+            } else {
                 await AppState.shared.finishJob(id: jobId, result: nil, error: error.localizedDescription)
-                return false
             }
-            let downloadsFolder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-            let fallbackURL = generateDestinationURL(for: url, inFolder: downloadsFolder, mediaType: mediaType, config: config)
-            
-            do {
-                destinationURL = fallbackURL
-                activeDestinationURLs[jobId] = destinationURL
-                
-                if isCancelled(jobId) {
-                    throw NSError(domain: "SqueezeBar", code: -999, userInfo: [NSLocalizedDescriptionKey: "Cancelled"])
-                }
-                try await executeCompression(
-                    sourceURL: url,
-                    destinationURL: destinationURL,
-                    mediaType: mediaType,
-                    config: config,
-                    sourceAsset: sourceAsset,
-                    jobId: jobId
-                )
-            } catch {
-                if isCancelled(jobId) {
-                    cancelledJobIds.remove(jobId)
-                    try? FileManager.default.removeItem(at: destinationURL)
-                    await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
-                    return false
-                }
-                await AppState.shared.finishJob(id: jobId, result: nil, error: error.localizedDescription)
-                return false
-            }
-        }
-        
-        if isCancelled(jobId) {
-            cancelledJobIds.remove(jobId)
-            try? FileManager.default.removeItem(at: destinationURL)
-            await AppState.shared.finishJob(id: jobId, result: nil, error: "Cancelled")
             return false
         }
         
         let compressedSize = fileSize(of: destinationURL)
         let duration = Date().timeIntervalSince(startTime)
-        if !Self.didSaveBytes(originalSize: originalSize, compressedSize: compressedSize) {
-            try? FileManager.default.removeItem(at: destinationURL)
-            await AppState.shared.finishJob(id: jobId, result: nil, error: nil, statusOverride: String(localized: "Already optimized"))
-            return false
-        }
         
         let outDim = await probeDimensions(for: destinationURL, mediaType: mediaType)
         if isCancelled(jobId) {
@@ -410,16 +374,18 @@ public actor MediaCompressionEngine {
     }
     
     // MARK: - Destination Path Generation
+    private static let downloadsFolder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        ?? FileManager.default.temporaryDirectory
+    
     private func generateDestinationURL(
         for sourceURL: URL,
-        inFolder customFolder: URL? = nil,
         mediaType: MediaType,
         config: CompressionConfiguration
     ) -> URL {
         let isClipboardTemp = sourceURL.lastPathComponent.hasPrefix("clipboard_")
             && sourceURL.deletingLastPathComponent().standardizedFileURL == FileManager.default.temporaryDirectory.standardizedFileURL
-        var folder = customFolder ?? sourceURL.deletingLastPathComponent()
-        if !isClipboardTemp, customFolder == nil, let customPath = config.customOutputFolder, !customPath.isEmpty {
+        var folder = sourceURL.deletingLastPathComponent()
+        if !isClipboardTemp, let customPath = config.customOutputFolder, !customPath.isEmpty {
             let customDir = URL(fileURLWithPath: customPath)
             if FileManager.default.fileExists(atPath: customDir.path) {
                 folder = customDir
@@ -427,7 +393,7 @@ public actor MediaCompressionEngine {
         }
         
         // Auto-create subfolder (e.g. "Squeezed") if enabled
-        if !isClipboardTemp && customFolder == nil && config.exportToSubfolder {
+        if !isClipboardTemp && config.exportToSubfolder {
             // Dots trimmed too, so ".." can't climb out of the folder.
             let cleaned = Self.safeNamePart(config.subfolderName).trimmingCharacters(in: CharacterSet(charactersIn: " ."))
             let targetSubfolder = folder.appendingPathComponent(cleaned.isEmpty ? "Squeezed" : cleaned)
@@ -435,6 +401,12 @@ public actor MediaCompressionEngine {
                 try? FileManager.default.createDirectory(at: targetSubfolder, withIntermediateDirectories: true)
             }
             folder = targetSubfolder
+        }
+        
+        // Read-only folder (locked volume, shared drive, no permission): save to Downloads instead.
+        // Decided up front, so a real encode error is reported once rather than retried elsewhere.
+        if !FileManager.default.isWritableFile(atPath: folder.path) {
+            folder = Self.downloadsFolder
         }
         
         let baseName = sourceURL.deletingPathExtension().lastPathComponent

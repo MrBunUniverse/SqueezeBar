@@ -561,7 +561,7 @@ public final class AppState: ObservableObject {
     private init() {
         // Load Image Settings
         let savedImgFormat = UserDefaults.standard.string(forKey: Keys.imageFormatPolicy) ?? ""
-        self.imageFormatPolicy = ImageFormatPolicy(rawValue: savedImgFormat) ?? .preserveOriginal
+        self.imageFormatPolicy = ImageFormatPolicy(rawValue: savedImgFormat).flatMap { ImageFormatPolicy.available.contains($0) ? $0 : nil } ?? .preserveOriginal
         
         let savedImgPreset = UserDefaults.standard.string(forKey: Keys.imageQualityPreset) ?? ""
         self.imageQualityPreset = QualityPreset(rawValue: savedImgPreset) ?? .visuallyLossless
@@ -870,6 +870,16 @@ public final class AppState: ObservableObject {
         }
         
         recordFailure(fileName: String(localized: "Clipboard"), message: String(localized: "Clipboard has no image or files"))
+    }
+    
+    /// Run at launch: removes clipboard squeezes left in the temp folder, since copied screenshots can be private.
+    nonisolated public static func removeClipboardFiles() {
+        let fm = FileManager.default
+        let temp = fm.temporaryDirectory
+        for name in (try? fm.contentsOfDirectory(atPath: temp.path)) ?? []
+        where name.hasPrefix("clipboard_temp_") || name.hasPrefix("clipboard_squeezed_") {
+            try? fm.removeItem(at: temp.appendingPathComponent(name))
+        }
     }
     
     // MARK: - Job Management

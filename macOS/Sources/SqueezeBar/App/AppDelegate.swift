@@ -11,6 +11,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         setupMainMenu()
         
+        Task.detached(priority: .utility) { AppState.removeClipboardFiles() }
+        
         // Register for macOS Services provider
         NSApp.servicesProvider = self
         
