@@ -274,13 +274,16 @@ public struct HardwareVideoCompressor: Sendable {
         // Audio writer input (AAC transcode via hardware)
         var writerAudioInput: AVAssetWriterInput?
         if readerAudioOutput != nil && targetAudioBitrate > 0 {
-            let audioCompressionSettings: [String: Any] = [
+            var audioCompressionSettings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
                 AVNumberOfChannelsKey: targetAudioBitrate <= 48_000 ? 1 : 2, // Mono for super small sizes like 48k
                 // AAC can't encode 16 kbps at 32 kHz ("Cannot Encode Media"); same floor as HardwareAudioCompressor.
-                AVSampleRateKey: targetAudioBitrate <= 16_000 ? 16000.0 : (targetAudioBitrate <= 48_000 ? 32000.0 : 44100.0),
+                AVSampleRateKey: targetAudioBitrate <= 8_000 ? 11025.0 : (targetAudioBitrate <= 16_000 ? 16000.0 : (targetAudioBitrate <= 48_000 ? 32000.0 : 44100.0)),
                 AVEncoderBitRateKey: targetAudioBitrate
             ]
+            if targetAudioBitrate <= 8_000 {
+                audioCompressionSettings[AVEncoderBitRateStrategyKey] = AVAudioBitRateStrategy_Constant
+            }
             let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioCompressionSettings)
             audioInput.expectsMediaDataInRealTime = false
             if writer.canAdd(audioInput) {

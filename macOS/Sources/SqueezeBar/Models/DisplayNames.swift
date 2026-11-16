@@ -68,6 +68,7 @@ extension ImageFormatPolicy {
 extension AudioBitratePreference {
     public var displayName: String {
         switch self {
+        case .k8: return String(localized: "8 kbps (Phone Call)")
         case .k16: return String(localized: "16 kbps (Crushed Meme)")
         case .k32: return String(localized: "32 kbps (Lo-Fi Radio)")
         case .k64: return String(localized: "64 kbps (Voice)")
@@ -156,6 +157,7 @@ extension AudioBitratePreference {
     /// Bitrate without the descriptive suffix, for compact pills.
     public var shortName: String {
         switch self {
+        case .k8: return String(localized: "8 kbps")
         case .k16: return String(localized: "16 kbps")
         case .k32: return String(localized: "32 kbps")
         case .k64: return String(localized: "64 kbps")

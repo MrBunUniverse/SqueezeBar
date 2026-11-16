@@ -28,10 +28,56 @@ private func loadDroppedFileURLs(from providers: [NSItemProvider], completion: @
     }
 }
 
+private extension Color {
+    static func surfaceWhite(_ opacity: Double, for scheme: ColorScheme) -> Color {
+        Color.white.opacity(scheme == .dark ? opacity * 0.68 : opacity)
+    }
+}
+
+private struct DarkControlSurface<S: InsettableShape>: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
+    let shape: S
+    var enabled = true
+    var dash: [CGFloat] = []
+    var highlighted = false
+    var borderless = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if colorScheme == .dark && enabled {
+                    shape.fill(Color(white: (isHovered || highlighted) ? 0.14 : 0.10))
+                        .overlay {
+                            if !borderless {
+                                shape.strokeBorder(
+                                    LinearGradient(colors: [.white.opacity(0.05), .white.opacity(0.02)], startPoint: .top, endPoint: .bottom),
+                                    style: StrokeStyle(lineWidth: 0.5, dash: dash)
+                                )
+                            }
+                        }
+                        .shadow(color: .black.opacity(0.20), radius: 3.5, y: 1)
+                        .allowsHitTesting(false)
+                }
+            }
+            .onHover { isHovered = $0 }
+    }
+}
+
+private extension View {
+    func darkControlSurface<S: InsettableShape>(_ shape: S, enabled: Bool = true, dash: [CGFloat] = [], highlighted: Bool = false, borderless: Bool = false) -> some View {
+        modifier(DarkControlSurface(shape: shape, enabled: enabled, dash: dash, highlighted: highlighted, borderless: borderless))
+    }
+}
+
 public struct QuickPopoverView: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     public var isDetachedWindow: Bool = false
     @State private var selectedTab: PopoverTab = .activity
+    @State private var contentTab: PopoverTab = .activity
+    @State private var tabContentWorkItem: DispatchWorkItem?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isWindowDropTargeted: Bool = false
     @State private var isAppearanceExpanded = false
     @State private var activeFormatCategory: MediaFormatCategory = .images
@@ -127,6 +173,12 @@ public struct QuickPopoverView: View {
                         .allowsHitTesting(false)
                 }
 
+                if colorScheme == .dark {
+                    RoundedRectangle(cornerRadius: isDetachedWindow ? 14 : 0)
+                        .fill(Color.black.opacity(0.32 * (1 - state.appTransparency * 0.4)))
+                        .allowsHitTesting(false)
+                }
+
                 if isWindowDropTargeted {
                     RoundedRectangle(cornerRadius: isDetachedWindow ? 14 : 0)
                         .strokeBorder(state.accentColor, lineWidth: 2.5)
@@ -196,7 +248,7 @@ public struct QuickPopoverView: View {
             // Tab Content
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(spacing: 14) {
-                    if selectedTab == .activity {
+                    if contentTab == .activity {
                         statsSummaryCard
                         
                         // Active Format Configuration Deck (Sliders, Quality, Resolution, Target Size, Codecs)
@@ -317,27 +369,46 @@ public struct QuickPopoverView: View {
             tabButton(.settings, title: "Settings", icon: "gearshape", selectedIcon: "gearshape.fill")
                 .help("App & Theme Settings")
         }
+        .modifier(SelectedPillDragGesture(options: PopoverTab.allCases, selected: selectedTab, style: .tab) { selectTab($0) })
         .padding(2)
         .background(
             Capsule()
-                .fill(Color.black.opacity(0.24))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                .fill(Color.black.opacity(colorScheme == .dark ? 0.34 : 0.24))
+                .overlay(Capsule().strokeBorder(Color.surfaceWhite(0.08, for: colorScheme), lineWidth: 0.5))
         )
+        .clipShape(Capsule())
         .padding(.horizontal, 18)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
 
+    private func selectTab(_ tab: PopoverTab) {
+        tabContentWorkItem?.cancel()
+        selectedTab = tab
+        let applyContent = {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                contentTab = tab
+            }
+            if tab == .settings {
+                FloatingDropWindowController.shared.ensureMinimumDimensions(width: 490, height: 660)
+                StatusBarController.sharedInstance?.ensurePopoverDimensions(width: 490, height: 660)
+            }
+        }
+        if reduceMotion {
+            tabContentWorkItem = nil
+            applyContent()
+        } else {
+            // Let the liquid finish its stretch and crossing before building/resizing the Settings body.
+            let work = DispatchWorkItem(block: applyContent)
+            tabContentWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+        }
+    }
+
     private func tabButton(_ tab: PopoverTab, title: LocalizedStringKey, icon: String, selectedIcon: String) -> some View {
         let isSelected = selectedTab == tab
         return Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                selectedTab = tab
-                if tab == .settings {
-                    FloatingDropWindowController.shared.ensureMinimumDimensions(width: 490, height: 660)
-                    StatusBarController.sharedInstance?.ensurePopoverDimensions(width: 490, height: 660)
-                }
-            }
+            selectTab(tab)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: isSelected ? selectedIcon : icon)
@@ -345,18 +416,12 @@ public struct QuickPopoverView: View {
                 Text(title)
                     .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium, design: .rounded))
             }
-            .foregroundColor(isSelected ? .white : .secondary)
             .frame(maxWidth: .infinity, minHeight: 28)
-            .background {
-                if isSelected {
-                    Capsule()
-                        .fill(Color.white.opacity(0.16))
-                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5))
-                }
-            }
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LiquidPillPressStyle())
+        .liquidPillOption(tab)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: - Live Format Selector Cards (Images, Video, Audio, PDF)
@@ -619,7 +684,7 @@ public struct QuickPopoverView: View {
                             .foregroundColor(.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2.5)
-                            .background(Capsule().fill(Color.white.opacity(0.06)))
+                            .background(Capsule().fill(Color.surfaceWhite(0.06, for: colorScheme)))
                     }
                 }
                 .padding(9)
@@ -630,7 +695,7 @@ public struct QuickPopoverView: View {
                             RoundedRectangle(cornerRadius: 10)
                                 .fill(
                                     LinearGradient(
-                                        colors: [Color.white.opacity(0.045), Color.white.opacity(0.015)],
+                                        colors: [Color.surfaceWhite(0.045, for: colorScheme), Color.surfaceWhite(0.015, for: colorScheme)],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     )
@@ -703,11 +768,12 @@ public struct QuickPopoverView: View {
             .frame(maxWidth: .infinity, minHeight: 40)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isDropTargeted ? state.accentColor.opacity(0.10) : Color.white.opacity(0.03))
+                    .fill(isDropTargeted ? state.accentColor.opacity(0.10) : Color.surfaceWhite(0.03, for: colorScheme))
+                    .darkControlSurface(RoundedRectangle(cornerRadius: 10), enabled: !isDropTargeted, dash: [4])
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
                             .strokeBorder(
-                                isDropTargeted ? state.accentColor.opacity(0.7) : Color.white.opacity(0.12),
+                                isDropTargeted ? state.accentColor.opacity(0.7) : (colorScheme == .dark ? .clear : Color.surfaceWhite(0.12, for: colorScheme)),
                                 style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4])
                             )
                     )
@@ -766,6 +832,7 @@ public struct QuickPopoverView: View {
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
+                .background(Color.clear.darkControlSurface(RoundedRectangle(cornerRadius: 7)))
                 .help("Recent actions")
                 .accessibilityLabel("Recent actions")
 
@@ -784,7 +851,8 @@ public struct QuickPopoverView: View {
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2.5)
                             .background(
-                                Capsule().fill(isEditMode ? state.accentColor : Color.white.opacity(0.06))
+                                Capsule().fill(isEditMode ? state.accentColor : Color.surfaceWhite(0.06, for: colorScheme))
+                                    .darkControlSurface(Capsule(), enabled: !isEditMode)
                             )
                     }
                     .buttonStyle(.plain)
@@ -918,7 +986,7 @@ public struct QuickPopoverView: View {
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.white.opacity(0.08)))
+                    .background(Capsule().fill(Color.surfaceWhite(0.08, for: colorScheme)))
                 }
                 .menuStyle(.borderlessButton)
                 
@@ -944,8 +1012,8 @@ public struct QuickPopoverView: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.04))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                .fill(Color.surfaceWhite(0.04, for: colorScheme))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.surfaceWhite(0.08, for: colorScheme), lineWidth: 0.5))
         )
     }
     
@@ -1129,11 +1197,12 @@ public struct QuickPopoverView: View {
                 .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(isDropTargeted ? state.accentColor.opacity(0.10) : Color.white.opacity(0.02))
+                        .fill(isDropTargeted ? state.accentColor.opacity(0.10) : Color.surfaceWhite(0.02, for: colorScheme))
+                        .darkControlSurface(RoundedRectangle(cornerRadius: 12), enabled: !isDropTargeted, dash: [4])
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
                                 .strokeBorder(
-                                    isDropTargeted ? state.accentColor.opacity(0.7) : Color.white.opacity(0.12),
+                                    isDropTargeted ? state.accentColor.opacity(0.7) : (colorScheme == .dark ? .clear : Color.surfaceWhite(0.12, for: colorScheme)),
                                     style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4])
                                 )
                         )
@@ -1196,7 +1265,7 @@ public struct QuickPopoverView: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(isQueueDropTargeted ? state.accentColor.opacity(0.12) : Color.white.opacity(0.04))
+                        .fill(isQueueDropTargeted ? state.accentColor.opacity(0.12) : Color.surfaceWhite(0.04, for: colorScheme))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
                                 .strokeBorder(isQueueDropTargeted ? state.accentColor.opacity(0.8) : Color.clear, lineWidth: 1.5)
@@ -1278,7 +1347,7 @@ public struct QuickPopoverView: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.white.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [3]))
+                    .strokeBorder(Color.surfaceWhite(0.08, for: colorScheme), style: StrokeStyle(lineWidth: 1, dash: [3]))
             )
             .onDrop(of: [.fileURL], isTargeted: $isQueueDropTargeted) { providers in
                 extractAndAddToQueue(providers: providers)
@@ -1287,8 +1356,8 @@ public struct QuickPopoverView: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.025))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                .fill(Color.surfaceWhite(0.025, for: colorScheme))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.surfaceWhite(0.08, for: colorScheme), lineWidth: 0.5))
         )
     }
     
@@ -1356,10 +1425,10 @@ public struct QuickPopoverView: View {
                         .padding(.vertical, 3)
                         .background(
                             Capsule()
-                                .fill(Color.white.opacity(0.10))
+                                .fill(Color.surfaceWhite(0.10, for: colorScheme))
                                 .overlay(
                                     Capsule()
-                                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+                                        .strokeBorder(Color.surfaceWhite(0.18, for: colorScheme), lineWidth: 0.5)
                                 )
                         )
                     }
@@ -1381,10 +1450,10 @@ public struct QuickPopoverView: View {
             .padding(10)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.black.opacity(0.25))
+                    .fill(Color.black.opacity(colorScheme == .dark ? 0.34 : 0.25))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
+                            .strokeBorder(Color.surfaceWhite(0.07, for: colorScheme), lineWidth: 0.5)
                     )
             )
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
@@ -1457,7 +1526,6 @@ public struct QuickPopoverView: View {
             let manualSelected = state.targetSizeMode == .off
             let manualWidth = baseWidth * (manualSelected ? 1.28 : 0.62)
             let otherWidth = (available - manualWidth) / CGFloat(modes.count - 1)
-            let pillWidths = modes.map { $0 == .off ? manualWidth : otherWidth }
 
             HStack(spacing: spacing) {
                 ForEach(modes, id: \.self) { mode in
@@ -1498,9 +1566,7 @@ public struct QuickPopoverView: View {
             }
             .modifier(SelectedPillDragGesture(
                 options: modes,
-                selected: state.targetSizeMode,
-                spacing: spacing,
-                optionWidths: pillWidths
+                selected: state.targetSizeMode
             ) { mode in
                 state.targetSizeMode = mode
             })
@@ -1604,8 +1670,7 @@ public struct QuickPopoverView: View {
                 }
                 .modifier(SelectedPillDragGesture(
                     options: QualityPreset.allCases,
-                    selected: state.imageQualityPreset,
-                    spacing: 4
+                    selected: state.imageQualityPreset
                 ) { preset in
                     state.imageQualityPreset = preset
                 })
@@ -1651,8 +1716,7 @@ public struct QuickPopoverView: View {
                 }
                 .modifier(SelectedPillDragGesture(
                     options: scales,
-                    selected: scales.first { abs(state.imageResolutionScale - $0) < 0.01 },
-                    spacing: 4
+                    selected: scales.first { abs(state.imageResolutionScale - $0) < 0.01 }
                 ) { scale in
                     state.imageResolutionScale = scale
                 })
@@ -1670,7 +1734,6 @@ public struct QuickPopoverView: View {
                     let available = proxy.size.width - spacing * CGFloat(policies.count - 1)
                     let selectedWidth = available / CGFloat(policies.count) * 1.8
                     let otherWidth = (available - selectedWidth) / CGFloat(policies.count - 1)
-                    let pillWidths = policies.map { $0 == state.imageFormatPolicy ? selectedWidth : otherWidth }
 
                     HStack(spacing: spacing) {
                         ForEach(policies, id: \.self) { policy in
@@ -1695,9 +1758,7 @@ public struct QuickPopoverView: View {
                     }
                     .modifier(SelectedPillDragGesture(
                         options: policies,
-                        selected: state.imageFormatPolicy,
-                        spacing: spacing,
-                        optionWidths: pillWidths
+                        selected: state.imageFormatPolicy
                     ) { policy in
                         state.imageFormatPolicy = policy
                     })
@@ -1757,8 +1818,7 @@ public struct QuickPopoverView: View {
                 }
                 .modifier(SelectedPillDragGesture(
                     options: QualityPreset.allCases,
-                    selected: state.videoQualityPreset,
-                    spacing: 4
+                    selected: state.videoQualityPreset
                 ) { preset in
                     state.videoQualityPreset = preset
                 })
@@ -1804,8 +1864,7 @@ public struct QuickPopoverView: View {
                 }
                 .modifier(SelectedPillDragGesture(
                     options: scaleOptions,
-                    selected: scaleOptions.first { abs(state.videoResolutionScale - $0) < 0.01 },
-                    spacing: 4
+                    selected: scaleOptions.first { abs(state.videoResolutionScale - $0) < 0.01 }
                 ) { scale in
                     state.videoResolutionScale = scale
                 })
@@ -1854,9 +1913,7 @@ public struct QuickPopoverView: View {
                     }
                     .modifier(SelectedPillDragGesture(
                         options: options,
-                        selected: state.videoFramerate,
-                        spacing: spacing,
-                        optionWidths: options.map { $0 == state.videoFramerate ? selectedWidth : otherWidth }
+                        selected: state.videoFramerate
                     ) { option in
                         state.videoFramerate = option
                     })
@@ -1898,9 +1955,7 @@ public struct QuickPopoverView: View {
                     }
                     .modifier(SelectedPillDragGesture(
                         options: options,
-                        selected: state.videoCodec,
-                        spacing: spacing,
-                        optionWidths: options.map { $0 == state.videoCodec ? selectedWidth : otherWidth }
+                        selected: state.videoCodec
                     ) { codec in
                         state.videoCodec = codec
                     })
@@ -1937,8 +1992,7 @@ public struct QuickPopoverView: View {
                             }
                             .modifier(SelectedPillDragGesture(
                                 options: GIFFramerateOption.allCases,
-                                selected: state.gifFramerate,
-                                spacing: 4
+                                selected: state.gifFramerate
                             ) { option in
                                 state.gifFramerate = option
                             })
@@ -2002,8 +2056,7 @@ public struct QuickPopoverView: View {
                 }
                 .modifier(SelectedPillDragGesture(
                     options: AudioBitratePreference.allCases,
-                    selected: state.audioBitrate,
-                    spacing: 4
+                    selected: state.audioBitrate
                 ) { rate in
                     state.audioBitrate = rate
                 })
@@ -2047,8 +2100,7 @@ public struct QuickPopoverView: View {
                 }
                 .modifier(SelectedPillDragGesture(
                     options: PDFDPIOption.allCases,
-                    selected: state.pdfDPI,
-                    spacing: 5
+                    selected: state.pdfDPI
                 ) { dpi in
                     state.pdfDPI = dpi
                 })
@@ -2099,8 +2151,7 @@ public struct QuickPopoverView: View {
                 }
                 .modifier(SelectedPillDragGesture(
                     options: qualities,
-                    selected: qualities.first { abs(state.pdfImageQuality - $0) < 0.01 },
-                    spacing: 5
+                    selected: qualities.first { abs(state.pdfImageQuality - $0) < 0.01 }
                 ) { quality in
                     state.pdfImageQuality = quality
                 })
@@ -2155,10 +2206,11 @@ public struct QuickPopoverView: View {
             .padding(14)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white.opacity(0.035))
+                    .fill(Color.surfaceWhite(0.035, for: colorScheme))
+                    .darkControlSurface(RoundedRectangle(cornerRadius: 10))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
+                            .strokeBorder(Color.surfaceWhite(0.07, for: colorScheme), lineWidth: 0.5)
                     )
             )
         }
@@ -2182,7 +2234,7 @@ public struct QuickPopoverView: View {
                                 .foregroundColor(.secondary)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
-                                .background(Capsule().fill(Color.white.opacity(0.10)))
+                                .background(Capsule().fill(Color.surfaceWhite(0.10, for: colorScheme)))
                         }
                     }
                     if let detail {
@@ -2320,10 +2372,9 @@ public struct QuickPopoverView: View {
                 }
             }
 
-            // Feedback: completion chime, haptics and soundpack
+            // Feedback: completion chime and soundpack
             settingsGroupCard("Completion feedback", icon: "speaker.wave.3.fill", summary: state.soundEnabled ? state.soundTheme.displayName : String(localized: "Off")) {
                 settingsToggleRow("Sound chime on completion", isOn: $state.soundEnabled)
-                settingsToggleRow("Haptic feedback on completion", isOn: $state.hapticEnabled)
 
                 VStack(alignment: .leading, spacing: 10) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
@@ -2335,7 +2386,7 @@ public struct QuickPopoverView: View {
                             // Play preview of sound
                             NSSound(named: sound.systemSoundName)?.play()
                         } label: {
-                            LiquidSelectionReader(isSelected: state.soundTheme == sound, id: AnyHashable(sound)) { progress, flowsToLeading in
+                            LiquidSelectionReader(isSelected: state.soundTheme == sound) { progress, flowsToLeading in
                                 LiquidRevealLabel(
                                     progress: progress,
                                     flowsToLeading: flowsToLeading,
@@ -2355,8 +2406,8 @@ public struct QuickPopoverView: View {
                                 }
                                 .background(
                                     ZStack {
-                                        Capsule().fill(Color.white.opacity(0.05))
-                                        LiquidFillLayer(progress: progress, flowsToLeading: flowsToLeading, accentColor: Color.white.opacity(0.3), isSelected: state.soundTheme == sound)
+                                        Capsule().fill(Color.surfaceWhite(0.05, for: colorScheme))
+                                        LiquidFillLayer(progress: progress, flowsToLeading: flowsToLeading, accentColor: state.accentColor, isSelected: state.soundTheme == sound)
                                     }
                                     .clipShape(Capsule())
                                 )
@@ -2490,8 +2541,7 @@ public struct QuickPopoverView: View {
                     }
                     .modifier(SelectedPillDragGesture(
                         options: UIScaleOption.allCases,
-                        selected: state.uiScale,
-                        spacing: 5
+                        selected: state.uiScale
                     ) { option in
                         state.uiScale = option
                     })
@@ -2662,7 +2712,7 @@ public struct QuickPopoverView: View {
                                 .padding(.vertical, 4)
                                 .background(
                                     RoundedRectangle(cornerRadius: 6)
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(Color.surfaceWhite(0.06, for: colorScheme))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 6)
                                                 .stroke(state.accentColor.opacity(0.4), lineWidth: 0.75)
@@ -2691,10 +2741,10 @@ public struct QuickPopoverView: View {
                                     .padding(.vertical, 3)
                                     .background(
                                         RoundedRectangle(cornerRadius: 6)
-                                            .fill(Color.white.opacity(0.06))
+                                            .fill(Color.surfaceWhite(0.06, for: colorScheme))
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: 6)
-                                                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                                                    .stroke(Color.surfaceWhite(0.12, for: colorScheme), lineWidth: 0.5)
                                             )
                                     )
                                 }
@@ -2725,8 +2775,8 @@ public struct QuickPopoverView: View {
                                             .frame(width: 22, height: 22)
                                             .background(
                                                 Circle()
-                                                    .fill(Color.white.opacity(0.06))
-                                                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                                                    .fill(Color.surfaceWhite(0.06, for: colorScheme))
+                                                    .overlay(Circle().stroke(Color.surfaceWhite(0.12, for: colorScheme), lineWidth: 0.5))
                                             )
                                     }
                                     .buttonStyle(.plain)
@@ -2762,10 +2812,11 @@ public struct QuickPopoverView: View {
                 .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.035))
+                        .fill(Color.surfaceWhite(0.035, for: colorScheme))
+                    .darkControlSurface(RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
+                                .strokeBorder(Color.surfaceWhite(0.07, for: colorScheme), lineWidth: 0.5)
                         )
                 )
             
@@ -2793,7 +2844,7 @@ public struct QuickPopoverView: View {
     // MARK: - Footer
     private var footerView: some View {
         HStack {
-            Text("SqueezeBar v1.2.1 • SirJameTV")
+            Text("SqueezeBar v1.2.1")
                 .font(.system(size: 10.5, design: .rounded))
                 .foregroundColor(.secondary)
             
@@ -2878,16 +2929,19 @@ private extension View {
 
 // MARK: - File Thumbnail View
 public struct FileThumbnailView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let url: URL
     let mediaType: MediaType
     var size: CGFloat = 28
+    var usesDarkControlSurface = false
     
     @State private var thumbnail: NSImage?
     
-    public init(url: URL, mediaType: MediaType, size: CGFloat = 28) {
+    public init(url: URL, mediaType: MediaType, size: CGFloat = 28, usesDarkControlSurface: Bool = false) {
         self.url = url
         self.mediaType = mediaType
         self.size = size
+        self.usesDarkControlSurface = usesDarkControlSurface
     }
     
     public var body: some View {
@@ -2900,7 +2954,7 @@ public struct FileThumbnailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
+                            .strokeBorder(Color.white.opacity(colorScheme == .dark && usesDarkControlSurface ? 0 : 0.15), lineWidth: 0.5)
                     )
             } else {
                 // Frosted Glass Media Placeholder
@@ -2913,9 +2967,10 @@ public struct FileThumbnailView: View {
                         )
                     )
                     .frame(width: size, height: size)
+                    .darkControlSurface(RoundedRectangle(cornerRadius: 6), enabled: usesDarkControlSurface, borderless: true)
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                            .strokeBorder(Color.white.opacity(colorScheme == .dark && usesDarkControlSurface ? 0 : 0.08), lineWidth: 0.5)
                     )
                     .overlay(
                         Image(systemName: mediaIconName)
@@ -3053,6 +3108,7 @@ private extension View {
 // MARK: - Liquid Glass Toggle Row
 private struct LiquidGlassToggleRow: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     let title: LocalizedStringKey
     let subtitle: LocalizedStringKey
     let icon: String
@@ -3092,11 +3148,11 @@ private struct LiquidGlassToggleRow: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 7)
-                    .fill(isOn ? state.accentColor.opacity(0.06) : Color.white.opacity(0.02))
+                    .fill(isOn ? state.accentColor.opacity(0.06) : Color.surfaceWhite(0.02, for: colorScheme))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 7)
-                    .stroke(isOn ? state.accentColor.opacity(0.18) : Color.white.opacity(0.04), lineWidth: 0.5)
+                    .stroke(isOn ? state.accentColor.opacity(0.18) : Color.surfaceWhite(0.04, for: colorScheme), lineWidth: 0.5)
             )
             .contentShape(Rectangle())
         }
@@ -3109,6 +3165,7 @@ private struct LiquidGlassToggleRow: View {
 // MARK: - Liquid Glass Switch
 public struct LiquidGlassSwitch: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var isOn: Bool
     
     public init(isOn: Binding<Bool>) {
@@ -3127,7 +3184,7 @@ public struct LiquidGlassSwitch: View {
                         endPoint: .bottomTrailing
                     ) :
                     LinearGradient(
-                        colors: [Color.white.opacity(0.12), Color.white.opacity(0.06)],
+                        colors: [Color.surfaceWhite(0.12, for: colorScheme), Color.surfaceWhite(0.06, for: colorScheme)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -3138,7 +3195,7 @@ public struct LiquidGlassSwitch: View {
                         .strokeBorder(
                             isOn ?
                             LinearGradient(colors: [Color.white.opacity(0.5), state.accentColor.opacity(0.3)], startPoint: .top, endPoint: .bottom) :
-                            LinearGradient(colors: [Color.white.opacity(0.2), Color.white.opacity(0.05)], startPoint: .top, endPoint: .bottom),
+                            LinearGradient(colors: [Color.surfaceWhite(0.2, for: colorScheme), Color.surfaceWhite(0.05, for: colorScheme)], startPoint: .top, endPoint: .bottom),
                             lineWidth: 0.75
                         )
                 )
@@ -3173,6 +3230,7 @@ public struct LiquidGlassSwitch: View {
 
 // MARK: - Format Tile
 private struct LiveProfileGlowCard<Content: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
     let accentColor: Color
     var isSelected: Bool = false
     @ViewBuilder let content: () -> Content
@@ -3181,7 +3239,8 @@ private struct LiveProfileGlowCard<Content: View>: View {
         content()
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? accentColor.opacity(0.12) : Color.white.opacity(0.035)))
+            .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? accentColor.opacity(0.12) : Color.surfaceWhite(0.035, for: colorScheme))
+                .darkControlSurface(RoundedRectangle(cornerRadius: 8), enabled: !isSelected))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isSelected ? accentColor.opacity(0.45) : Color.clear, lineWidth: 0.75))
     }
 }
@@ -3203,6 +3262,7 @@ private final class NonDraggableNSView: NSView {
 
 // MARK: - Modern Liquid Glass Slider with Subtle White Specular Dynamics
 struct LiquidGlassSlider: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var value: Double
     let range: ClosedRange<Double>
     var step: Double? = nil
@@ -3235,11 +3295,11 @@ struct LiquidGlassSlider: View {
                 
                 // Background Track
                 Capsule()
-                    .fill(Color.white.opacity(0.09))
+                    .fill(Color.surfaceWhite(0.09, for: colorScheme))
                     .frame(height: 6)
                     .overlay(
                         Capsule()
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                            .strokeBorder(Color.surfaceWhite(0.08, for: colorScheme), lineWidth: 0.5)
                     )
                 
                 // Active Filled Track with Accent Gradient
@@ -3363,14 +3423,6 @@ struct LiquidGlassSlider: View {
     }
 }
 
-private struct PillRowWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 private enum PillLiquidDirection {
     case leadingToTrailing
     case trailingToLeading
@@ -3380,22 +3432,7 @@ private struct PillLiquidDirectionKey: EnvironmentKey {
     static let defaultValue = PillLiquidDirection.leadingToTrailing
 }
 
-private struct PillLiquidDragContext {
-    var isDragging = false
-    var selected: AnyHashable?
-    var trailing: AnyHashable?
-}
-
-private struct PillLiquidDragContextKey: EnvironmentKey {
-    static let defaultValue = PillLiquidDragContext()
-}
-
 private extension EnvironmentValues {
-    var pillLiquidDragContext: PillLiquidDragContext {
-        get { self[PillLiquidDragContextKey.self] }
-        set { self[PillLiquidDragContextKey.self] = newValue }
-    }
-
     var pillLiquidDirection: PillLiquidDirection {
         get { self[PillLiquidDirectionKey.self] }
         set { self[PillLiquidDirectionKey.self] = newValue }
@@ -3538,22 +3575,18 @@ private struct LiquidFillLayer: View {
 /// Owns a pill's fill progress so the liquid and its label reveal animate from the same value.
 private struct LiquidSelectionReader<Content: View>: View {
     let isSelected: Bool
-    var id: AnyHashable? = nil
     let content: (_ progress: CGFloat, _ flowsToLeading: Bool) -> Content
 
     @State private var progress: CGFloat
 
     @Environment(\.pillLiquidDirection) private var pillLiquidDirection
-    @Environment(\.pillLiquidDragContext) private var dragContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         isSelected: Bool,
-        id: AnyHashable? = nil,
         @ViewBuilder content: @escaping (_ progress: CGFloat, _ flowsToLeading: Bool) -> Content
     ) {
         self.isSelected = isSelected
-        self.id = id
         self.content = content
         _progress = State(initialValue: isSelected ? 1 : 0)
     }
@@ -3562,15 +3595,7 @@ private struct LiquidSelectionReader<Content: View>: View {
         let movingLeft = pillLiquidDirection == .trailingToLeading
         content(progress, isSelected ? movingLeft : !movingLeft)
             .onChange(of: isSelected) { _, selected in
-                // While dragging, pills the drag has already passed drain instantly instead of trailing behind.
-                if dragContext.isDragging && !selected && dragContext.trailing != id {
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) { progress = 0 }
-                    return
-                }
-                let animation: Animation? = reduceMotion ? nil
-                    : (dragContext.isDragging ? .easeOut(duration: 0.10) : .timingCurve(0.3, 0.7, 0.2, 1.0, duration: 0.5))
+                let animation: Animation? = reduceMotion ? nil : .timingCurve(0.3, 0.7, 0.2, 1.0, duration: 0.5)
                 withAnimation(animation) {
                     progress = selected ? 1 : 0
                 }
@@ -3601,80 +3626,544 @@ private struct LiquidRevealLabel<Label: View>: View {
     }
 }
 
-private struct SelectedPillDragGesture<Option: Hashable>: ViewModifier {
-    let options: [Option]
-    let selected: Option?
-    let spacing: CGFloat
-    var optionWidths: [CGFloat]? = nil
-    let onSelect: (Option) -> Void
+// MARK: - Liquid selection fill shared by segmented pill rows
 
-    @State private var pillLiquidDirection = PillLiquidDirection.leadingToTrailing
-    @State private var centersAtDragStart: [CGFloat] = []
-    @State private var trailingOption: Option?
-    @State private var rowWidth: CGFloat = 0
+/// Colours of the liquid selection in one pill row.
+struct LiquidPillStyle {
+    var fill: Color = .white.opacity(0.3)
+    var stroke: Color = .white.opacity(0.18)
+    var glow: Color = .white.opacity(0.11)
+    var volume = true
+    /// Label colour outside the liquid; inside it labels are white.
+    var label: Color = .primary.opacity(0.85)
 
-    func body(content: Content) -> some View {
-        content
-            .environment(\.pillLiquidDirection, pillLiquidDirection)
-            .environment(\.pillLiquidDragContext, PillLiquidDragContext(
-                isDragging: !centersAtDragStart.isEmpty,
-                selected: selected.map { AnyHashable($0) },
-                trailing: trailingOption.map { AnyHashable($0) }
-            ))
-            .onChange(of: selected) { oldSelection, newSelection in
-                guard let oldSelection,
-                      let newSelection,
-                      let oldIndex = options.firstIndex(of: oldSelection),
-                      let newIndex = options.firstIndex(of: newSelection),
-                      oldIndex != newIndex else { return }
-                pillLiquidDirection = newIndex > oldIndex ? .leadingToTrailing : .trailingToLeading
-            }
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.preference(key: PillRowWidthPreferenceKey.self, value: proxy.size.width)
-                }
-            )
-            .onPreferenceChange(PillRowWidthPreferenceKey.self) { rowWidth = $0 }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                .onChanged { value in
-                    guard let selected, let selectedIndex = options.firstIndex(of: selected) else { return }
+    static let pill = LiquidPillStyle()
+    static let tab = LiquidPillStyle(fill: .white.opacity(0.20), stroke: .white.opacity(0.24), glow: .clear, volume: true, label: .secondary)
+}
 
-                    if centersAtDragStart.isEmpty {
-                        let widths = optionWidths.flatMap { $0.count == options.count ? $0 : nil }
-                            ?? Array(repeating: max(0, (rowWidth - spacing * CGFloat(options.count - 1)) / CGFloat(options.count)), count: options.count)
-                        var centers: [CGFloat] = []
-                        var x: CGFloat = 0
-                        for width in widths {
-                            centers.append(x + width / 2)
-                            x += width + spacing
-                        }
+private let liquidPillRowSpace = "liquidPillRow"
 
-                        guard abs(value.startLocation.x - centers[selectedIndex]) <= widths[selectedIndex] / 2 else { return }
-                        centersAtDragStart = centers
-                    }
+/// Option frames in the row's coordinate space, keyed by option.
+struct LiquidPillFramesKey: PreferenceKey {
+    static var defaultValue: [AnyHashable: CGRect] = [:]
 
-                    let cursorX = value.startLocation.x + value.translation.width
-                    guard let targetIndex = centersAtDragStart.indices.min(by: {
-                        abs(centersAtDragStart[$0] - cursorX) < abs(centersAtDragStart[$1] - cursorX)
-                    }), targetIndex != selectedIndex else { return }
-
-                    pillLiquidDirection = targetIndex > selectedIndex ? .leadingToTrailing : .trailingToLeading
-                    trailingOption = abs(targetIndex - selectedIndex) == 1 ? selected : nil
-                    withAnimation(.easeOut(duration: 0.10)) {
-                        onSelect(options[targetIndex])
-                    }
-                }
-                .onEnded { _ in
-                    centersAtDragStart.removeAll()
-                    trailingOption = nil
-                }
-        )
+    static func reduce(value: inout [AnyHashable: CGRect], nextValue: () -> [AnyHashable: CGRect]) {
+        value.merge(nextValue()) { $1 }
     }
 }
 
-// MARK: - Reusable selectable pill with liquid fill
-private struct UniversalPillGliderItem<T: Hashable>: View {
+private struct PillLiquidRevealKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private struct PillLiquidLabelKey: EnvironmentKey {
+    static let defaultValue = Color.primary.opacity(0.85)
+}
+
+private extension EnvironmentValues {
+    /// True inside the white label copy that is masked to the liquid.
+    var pillLiquidReveal: Bool {
+        get { self[PillLiquidRevealKey.self] }
+        set { self[PillLiquidRevealKey.self] = newValue }
+    }
+
+    var pillLiquidLabel: Color {
+        get { self[PillLiquidLabelKey.self] }
+        set { self[PillLiquidLabelKey.self] = newValue }
+    }
+}
+
+/// Marks a view as one option of a liquid pill row: reports its frame and takes the row's label colour.
+private struct LiquidPillOptionModifier: ViewModifier {
+    let id: AnyHashable
+    @Environment(\.pillLiquidReveal) private var isRevealCopy
+    @Environment(\.pillLiquidLabel) private var labelColor
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(isRevealCopy ? Color.white : labelColor)
+            .background {
+                if !isRevealCopy {
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: LiquidPillFramesKey.self, value: [id: proxy.frame(in: .named(liquidPillRowSpace))])
+                    }
+                }
+            }
+    }
+}
+
+extension View {
+    func liquidPillOption(_ id: AnyHashable) -> some View {
+        modifier(LiquidPillOptionModifier(id: id))
+    }
+}
+
+/// A blob of liquid lying in a pill row: two round ends joined by sides that pinch into a neck when stretched.
+struct LiquidPillShape: Shape {
+    var minX: CGFloat
+    var maxX: CGFloat
+    var midY: CGFloat
+    var height: CGFloat
+    /// 0 = straight sides, 1 = deepest neck.
+    var pinch: CGFloat = 0
+    /// Vertical squash (< 0) or stretch (> 0) as a fraction of the height.
+    var squash: CGFloat = 0
+    var leadsRight = true
+
+    static let hidden = LiquidPillShape(minX: 0, maxX: 0, midY: 0, height: 0)
+
+    init(minX: CGFloat, maxX: CGFloat, midY: CGFloat, height: CGFloat, pinch: CGFloat = 0, squash: CGFloat = 0, leadsRight: Bool = true) {
+        self.minX = minX
+        self.maxX = maxX
+        self.midY = midY
+        self.height = height
+        self.pinch = pinch
+        self.squash = squash
+        self.leadsRight = leadsRight
+    }
+
+    init(_ rect: CGRect) {
+        self.init(minX: rect.minX, maxX: rect.maxX, midY: rect.midY, height: rect.height)
+    }
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(AnimatablePair(minX, maxX), AnimatablePair(midY, height)) }
+        set {
+            minX = newValue.first.first
+            maxX = newValue.first.second
+            midY = newValue.second.first
+            height = newValue.second.second
+        }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let width = maxX - minX
+        guard width > 1, height > 1 else { return Path() }
+        let ease = pinch * pinch * (3 - 2 * pinch)
+        let half = height / 2
+        // The leading end keeps its mass; the tail thins out as it is pulled along.
+        let leadR = min(half * (1 + squash * 0.5), width / 2)
+        let tailR = min(half * (1 + squash) * (1 - 0.18 * ease), width / 2)
+        let rL = leadsRight ? tailR : leadR
+        let rR = leadsRight ? leadR : tailR
+        let cL = minX + rL
+        let cR = maxX - rR
+        // The neck forms a little behind the middle, where the liquid is thinnest.
+        let neckX = (cL + cR) / 2 + (cR - cL) * (leadsRight ? -0.12 : 0.12)
+        let neck = min(rL, rR) * (1 - 0.46 * ease)
+
+        var path = Path()
+        path.move(to: CGPoint(x: cL, y: midY - rL))
+        Self.addSide(&path, from: CGPoint(x: cL, y: midY - rL), neck: CGPoint(x: neckX, y: midY - neck), to: CGPoint(x: cR, y: midY - rR))
+        path.addArc(center: CGPoint(x: cR, y: midY), radius: rR, startAngle: .degrees(-90), endAngle: .degrees(90), clockwise: false)
+        Self.addSide(&path, from: CGPoint(x: cR, y: midY + rR), neck: CGPoint(x: neckX, y: midY + neck), to: CGPoint(x: cL, y: midY + rL))
+        path.addArc(center: CGPoint(x: cL, y: midY), radius: rL, startAngle: .degrees(90), endAngle: .degrees(270), clockwise: false)
+        path.closeSubpath()
+        return path
+    }
+
+    /// Two cubics with flat tangents at the ends and at the neck, so the side meets the round ends smoothly.
+    private static func addSide(_ path: inout Path, from a: CGPoint, neck m: CGPoint, to b: CGPoint) {
+        let k: CGFloat = 0.55
+        path.addCurve(to: m, control1: CGPoint(x: a.x + (m.x - a.x) * k, y: a.y), control2: CGPoint(x: m.x - (m.x - a.x) * k, y: m.y))
+        path.addCurve(to: b, control1: CGPoint(x: m.x + (b.x - m.x) * k, y: m.y), control2: CGPoint(x: b.x - (b.x - m.x) * k, y: b.y))
+    }
+}
+
+private struct InvertedPathShape: Shape {
+    let blobPath: Path
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect.insetBy(dx: -12, dy: -12))
+        path.addPath(blobPath)
+        return path
+    }
+}
+
+/// Spring physics for the liquid: each edge has its own spring, the edge facing the travel direction is
+/// quick and the trailing edge is slower and hangs on briefly, so the blob stretches across the gap and
+/// then contracts into the target with a jelly wobble. Only stepped while something moves.
+final class LiquidPillSim {
+    private struct Edge {
+        var x: CGFloat = 0
+        var v: CGFloat = 0
+    }
+
+    private struct Spring {
+        let response: CGFloat
+        let damping: CGFloat
+    }
+
+    private static let lead = Spring(response: 0.28, damping: 0.72)
+    private static let trail = Spring(response: 0.45, damping: 0.68)
+    private static let dragLead = Spring(response: 0.11, damping: 0.86)
+    private static let dragTrail = Spring(response: 0.30, damping: 0.74)
+    private static let jelly = Spring(response: 0.24, damping: 0.40)
+
+    private var lo = Edge()
+    private var hi = Edge()
+    private var squash = Edge()
+    private var goalLo: CGFloat = 0
+    private var goalHi: CGFloat = 0
+    private var midY: CGFloat = 0
+    private var height: CGFloat = 0
+    private var restWidth: CGFloat = 0
+    private var movingRight = true
+    private var holdUntil: TimeInterval = 0
+    private var holdX: CGFloat = 0
+    private var dragging = false
+    private var lastTarget: CGRect?
+    private var visible = false
+    private var clock: TimeInterval = 0
+    private var edgesRestingSince: TimeInterval?
+    private(set) var isSettled = true
+
+    /// Feeds the current goal: the selected option's frame, or the drag position while dragging.
+    func update(target: CGRect?, drag: (center: CGFloat, option: CGRect)?, at time: TimeInterval) {
+        if let drag {
+            follow(center: drag.center, option: drag.option, at: time)
+            return
+        }
+        let dragEnded = dragging
+        dragging = false
+        guard let target else {
+            visible = false
+            lastTarget = nil
+            return
+        }
+        if !visible || dragEnded || target != lastTarget {
+            move(to: target, at: time, snap: !visible)
+        }
+    }
+
+    func advance(to time: TimeInterval) {
+        guard !isSettled, time > clock else { return }
+        var remaining = CGFloat(min(time - clock, 1.0 / 30))
+        clock = time
+        let holding = time < holdUntil
+        while remaining > 0 {
+            let h = min(1.0 / 240, remaining)
+            remaining -= h
+            integrate(h, holding: holding)
+        }
+        let edgesResting = !dragging && !holding
+            && abs(lo.x - goalLo) < 0.25 && abs(hi.x - goalHi) < 0.25
+            && abs(lo.v) < 4 && abs(hi.v) < 4
+        if edgesResting {
+            if edgesRestingSince == nil { edgesRestingSince = time }
+        } else {
+            edgesRestingSince = nil
+        }
+        let deformationResting = abs(squash.x) < 0.004 && abs(squash.v) < 0.08
+        if edgesResting && (deformationResting || time - (edgesRestingSince ?? time) >= 0.3) {
+            lo = Edge(x: goalLo)
+            hi = Edge(x: goalHi)
+            squash = Edge()
+            restWidth = goalHi - goalLo
+            isSettled = true
+        }
+    }
+
+    var shape: LiquidPillShape {
+        guard visible else { return .hidden }
+        // Drawn with soft limits so long trips don't turn into a noodle or fly past the end of the row.
+        let soft = { (amount: CGFloat, limit: CGFloat) in amount > 0 ? limit * tanh(amount / limit) : amount }
+        var minX = lo.x
+        var maxX = hi.x
+        if movingRight {
+            maxX = goalHi + soft(maxX - goalHi, height * 0.2)
+        } else {
+            minX = goalLo - soft(goalLo - minX, height * 0.2)
+        }
+        let rest = max(restWidth, goalHi - goalLo)
+        let length = rest + soft(maxX - minX - rest, height * 3)
+        if movingRight { minX = maxX - length } else { maxX = minX + length }
+        return LiquidPillShape(
+            minX: minX, maxX: maxX, midY: midY, height: height,
+            pinch: min(max((length - rest) / max(height, 1) / 2, 0), 1),
+            squash: squash.x,
+            leadsRight: movingRight
+        )
+    }
+
+    /// How much longer than at rest the blob is, in pill heights.
+    private var stretch: CGFloat {
+        (hi.x - lo.x - max(restWidth, goalHi - goalLo)) / max(height, 1)
+    }
+
+    private func wake(at time: TimeInterval) {
+        if isSettled {
+            clock = time
+            isSettled = false
+        }
+    }
+
+    /// Hidden windows resume at the current selection, without replaying an old flight.
+    func snap(to target: CGRect?, at time: TimeInterval) {
+        dragging = false
+        holdUntil = 0
+        edgesRestingSince = nil
+        clock = time
+        if let target {
+            move(to: target, at: time, snap: true)
+        } else {
+            visible = false
+            lastTarget = nil
+            isSettled = true
+        }
+    }
+
+    private func move(to rect: CGRect, at time: TimeInterval, snap: Bool) {
+        lastTarget = rect
+        midY = rect.midY
+        height = rect.height
+        goalLo = rect.minX
+        goalHi = rect.maxX
+        if snap {
+            lo = Edge(x: rect.minX)
+            hi = Edge(x: rect.maxX)
+            squash = Edge()
+            restWidth = rect.width
+            visible = true
+            isSettled = true
+            return
+        }
+        let trip = rect.midX - (lo.x + hi.x) / 2
+        guard abs(trip) > 2 else {
+            move(to: rect, at: time, snap: true)
+            return
+        }
+        edgesRestingSince = nil
+        wake(at: time)
+        movingRight = trip > 0
+        restWidth = hi.x - lo.x
+        holdX = movingRight ? lo.x : hi.x
+        // The trailing edge lets go a moment later, longer on longer trips.
+        holdUntil = time + min(0.03 + 0.02 * Double(abs(trip) / max(rect.width, 1)), 0.09)
+    }
+
+    private func follow(center: CGFloat, option: CGRect, at time: TimeInterval) {
+        if !visible { move(to: option, at: time, snap: true) }
+        wake(at: time)
+        dragging = true
+        lastTarget = nil
+        holdUntil = 0
+        let newLo = center - option.width / 2
+        if abs(newLo - goalLo) > 1 { movingRight = newLo > goalLo }
+        goalLo = newLo
+        goalHi = newLo + option.width
+        restWidth = option.width
+        midY = option.midY
+        height = option.height
+    }
+
+    private func integrate(_ h: CGFloat, holding: Bool) {
+        // A re-selection can capture a stretched width; it must not become a permanent rest width.
+        restWidth += (goalHi - goalLo - restWidth) * (1 - exp(-12 * h))
+        let lead = dragging ? Self.dragLead : Self.lead
+        let trail = dragging ? Self.dragTrail : Self.trail
+        if movingRight {
+            Self.step(&hi, to: goalHi, lead, h)
+            Self.step(&lo, to: holding ? holdX : goalLo, trail, h)
+        } else {
+            Self.step(&lo, to: goalLo, lead, h)
+            Self.step(&hi, to: holding ? holdX : goalHi, trail, h)
+        }
+        // Volume is roughly kept: a stretched blob gets thinner, a compressed one taller, and it wobbles back.
+        Self.step(&squash, to: min(max(-0.09 * stretch, -0.16), 0.08), Self.jelly, h)
+    }
+
+    private static func step(_ edge: inout Edge, to goal: CGFloat, _ spring: Spring, _ h: CGFloat) {
+        let omega = 2 * .pi / spring.response
+        let acceleration = -omega * omega * (edge.x - goal) - 2 * spring.damping * omega * edge.v
+        edge.v += acceleration * h
+        edge.x += edge.v * h
+    }
+}
+
+struct LiquidPillPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+private final class PillRowRenderToken {
+    private var version: UInt64 = 0
+    func next() -> UInt64 {
+        version &+= 1
+        return version
+    }
+}
+
+private struct StaticPillRow<Row: View>: View, Equatable {
+    let version: UInt64
+    let row: Row
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.version == rhs.version
+    }
+
+    var body: some View {
+        row
+    }
+}
+
+/// One liquid selection behind a row of `liquidPillOption` views, with drag-to-switch and VoiceOver adjust.
+struct SelectedPillDragGesture<Option: Hashable>: ViewModifier {
+    @EnvironmentObject private var state: AppState
+    let options: [Option]
+    let selected: Option?
+    var style = LiquidPillStyle.pill
+    let onSelect: (Option) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var frames: [AnyHashable: CGRect] = [:]
+    @State private var dragX: CGFloat?
+    @State private var dragRejected = false
+    @State private var sim = LiquidPillSim()
+    @State private var isRunning = false
+    @State private var windowVisible = false
+    @State private var renderToken = PillRowRenderToken()
+
+    private var targetFrame: CGRect? {
+        selected.flatMap { frames[AnyHashable($0)] }
+    }
+
+    private func nearestOption(to x: CGFloat) -> Option? {
+        options.filter { frames[AnyHashable($0)] != nil }
+            .min { abs(frames[AnyHashable($0)]!.midX - x) < abs(frames[AnyHashable($1)]!.midX - x) }
+    }
+
+    func body(content: Content) -> some View {
+        let rowVersion = renderToken.next()
+        let row = content
+            .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.7), value: selected)
+            .environment(\.pillLiquidLabel, style.label)
+        let staticBaseRow = StaticPillRow(version: rowVersion, row: row)
+        let staticRevealRow = StaticPillRow(
+            version: rowVersion,
+            row: row.environment(\.pillLiquidReveal, true).padding(2).drawingGroup().padding(-2)
+        )
+
+        Group {
+            if reduceMotion {
+                let rect = dragX.flatMap(nearestOption(to:)).flatMap { frames[AnyHashable($0)] } ?? targetFrame
+                liquidLayers(baseRow: staticBaseRow, revealRow: staticRevealRow, blob: rect.map(LiquidPillShape.init) ?? .hidden)
+                    .animation(.easeInOut(duration: 0.18), value: rect)
+            } else {
+                TimelineView(.animation(paused: !windowVisible || !isRunning)) { context in
+                    let blob = tick(context.date)
+                    liquidLayers(baseRow: staticBaseRow, revealRow: staticRevealRow, blob: blob)
+                        .onChange(of: sim.isSettled, initial: true) { _, _ in
+                            isRunning = windowVisible && !sim.isSettled
+                        }
+                }
+                .background(WindowVisibilityReader(isVisible: $windowVisible))
+                .onChange(of: windowVisible) { _, _ in
+                    sim.snap(to: targetFrame, at: Date().timeIntervalSinceReferenceDate)
+                    isRunning = false
+                }
+            }
+        }
+        .onPreferenceChange(LiquidPillFramesKey.self) { newFrames in
+            if frames != newFrames {
+                frames = newFrames
+            }
+        }
+        .contentShape(Rectangle())
+        .simultaneousGesture(dragGesture, including: isEnabled ? .all : .subviews)
+        .accessibilityElement(children: .contain)
+        .accessibilityAdjustableAction { direction in
+            guard isEnabled, let selected, let index = options.firstIndex(of: selected) else { return }
+            switch direction {
+            case .increment where index + 1 < options.count: onSelect(options[index + 1])
+            case .decrement where index > 0: onSelect(options[index - 1])
+            default: break
+            }
+        }
+        .coordinateSpace(.named(liquidPillRowSpace))
+    }
+
+    /// Labels outside the liquid in the row colour, the liquid fill, and white labels clipped to the liquid.
+    private func liquidLayers<BaseRow: View & Equatable, RevealRow: View & Equatable>(baseRow: BaseRow, revealRow: RevealRow, blob: LiquidPillShape) -> some View {
+        let blobPath = blob.path(in: .zero)
+        let hasGlow = style.glow != .clear
+
+        return baseRow
+            .equatable()
+            .mask(InvertedPathShape(blobPath: blobPath).fill(style: FillStyle(eoFill: true)))
+            .background {
+                ZStack {
+                    blobPath.fill(LinearGradient(colors: [state.accentColor.opacity(0.95), state.accentColor.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    if style.volume {
+                        // Lighter on top, slightly deeper underneath.
+                        blobPath.fill(LinearGradient(colors: [.white.opacity(0.20), .white.opacity(0), .black.opacity(0.10)], startPoint: .top, endPoint: .bottom))
+                    }
+                    blobPath.stroke(style.stroke, lineWidth: 0.5)
+                }
+                .shadow(color: hasGlow ? style.glow : .clear, radius: hasGlow ? 5 : 0, y: hasGlow ? 1.5 : 0)
+            }
+            .overlay {
+                revealRow
+                    .equatable()
+                    .mask(blobPath)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+    }
+
+    private func tick(_ date: Date) -> LiquidPillShape {
+        let drag = dragX.flatMap { x -> (center: CGFloat, option: CGRect)? in
+            let centers = options.compactMap { frames[AnyHashable($0)]?.midX }
+            guard let first = centers.min(), let last = centers.max(),
+                  let option = nearestOption(to: x).flatMap({ frames[AnyHashable($0)] }) else { return nil }
+            // Rubber-band past the first and last option.
+            let center = x < first ? first + (x - first) * 0.25 : (x > last ? last + (x - last) * 0.25 : x)
+            return (center, option)
+        }
+        if windowVisible {
+            sim.update(target: targetFrame, drag: drag, at: date.timeIntervalSinceReferenceDate)
+            sim.advance(to: date.timeIntervalSinceReferenceDate)
+        } else {
+            sim.snap(to: targetFrame, at: date.timeIntervalSinceReferenceDate)
+        }
+        return sim.shape
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(liquidPillRowSpace))
+            .onChanged { value in
+                guard isEnabled, !dragRejected else { return }
+                // Mostly vertical: leave it to scrolling.
+                if dragX == nil, abs(value.translation.height) > abs(value.translation.width) {
+                    dragRejected = true
+                    return
+                }
+                dragX = value.location.x
+            }
+            .onEnded { value in
+                defer {
+                    dragX = nil
+                    dragRejected = false
+                }
+                guard dragX != nil, isEnabled else { return }
+                let x = value.location.x + (value.predictedEndLocation.x - value.location.x) * 0.15
+                if let option = nearestOption(to: x), option != selected {
+                    onSelect(option)
+                }
+            }
+    }
+}
+
+// MARK: - Reusable selectable pill
+struct UniversalPillGliderItem<T: Hashable>: View {
+    @Environment(\.colorScheme) private var colorScheme
     let item: T
     let title: String
     let icon: String?
@@ -3682,70 +4171,49 @@ private struct UniversalPillGliderItem<T: Hashable>: View {
     let accentColor: Color
     let contrastTextColor: Color
     let action: () -> Void
-    
+
+    @Environment(\.pillLiquidReveal) private var isRevealCopy
+
     var body: some View {
-        LiquidSelectionReader(isSelected: isSelected, id: AnyHashable(item)) { progress, flowsToLeading in
-            pillButton(progress: progress, flowsToLeading: flowsToLeading)
-        }
-    }
-    
-    private func pillButton(progress: CGFloat, flowsToLeading: Bool) -> some View {
         Button(action: action) {
-            LiquidRevealLabel(
-                progress: progress,
-                flowsToLeading: flowsToLeading,
-                baseColor: .primary.opacity(0.85),
-                revealColor: .white
-            ) { color in
-                HStack(spacing: 4) {
-                    if let icon = icon {
-                        Image(systemName: icon)
-                            .font(.system(size: 10.5, design: .rounded))
-                    }
-                    Text(title)
-                        .font(.system(size: 10.5, weight: isSelected ? .semibold : .medium, design: .rounded))
-                        .lineLimit(1)
+            HStack(spacing: 4) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 10.5, design: .rounded))
                 }
-                .foregroundColor(color)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .frame(minHeight: 26)
-                .frame(maxWidth: .infinity)
+                Text(title)
+                    .font(.system(size: 10.5, weight: isSelected ? .semibold : .medium, design: .rounded))
+                    .lineLimit(1)
             }
-            .background(
-                ZStack {
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(minHeight: 26)
+            .frame(maxWidth: .infinity)
+            .background {
+                if !isRevealCopy {
                     Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.08), Color.white.opacity(0.03)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                        .fill(LinearGradient(colors: [Color.surfaceWhite(0.08, for: colorScheme), Color.surfaceWhite(0.03, for: colorScheme)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .darkControlSurface(Capsule(), enabled: !isSelected)
+                        .overlay(
+                            Capsule().strokeBorder(
+                                LinearGradient(colors: [Color.surfaceWhite(0.10, for: colorScheme), Color.surfaceWhite(0.04, for: colorScheme)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                lineWidth: 0.5
                             )
                         )
-                    LiquidFillLayer(progress: progress, flowsToLeading: flowsToLeading, accentColor: Color.white.opacity(0.3), isSelected: isSelected)
                 }
-            )
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.10), Color.white.opacity(0.04)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.5
-                    )
-            )
+            }
+            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        .hoverGrow(1.05)
+        .buttonStyle(LiquidPillPressStyle())
+        .liquidPillOption(item)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
 // MARK: - Dedicated Folder Section Item View with Drag & Drop Targeting & Inline Customization
 private struct FolderSectionItemView: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     let folder: CompressionFolder
     let isEditMode: Bool
     @Binding var selectedResultIds: Set<UUID>
@@ -3811,7 +4279,7 @@ private struct FolderSectionItemView: View {
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.12)))
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.surfaceWhite(0.12, for: colorScheme)))
                     .frame(maxWidth: 140)
                 } else {
                     Text(folder.name)
@@ -3888,7 +4356,7 @@ private struct FolderSectionItemView: View {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isFolderDropTargeted ? Color.green.opacity(0.12) : Color.white.opacity(0.03))
+                    .fill(isFolderDropTargeted ? Color.green.opacity(0.12) : Color.surfaceWhite(0.03, for: colorScheme))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(isFolderDropTargeted ? Color.green.opacity(0.6) : Color.clear, lineWidth: 1)
@@ -3911,7 +4379,7 @@ private struct FolderSectionItemView: View {
                     .padding(.vertical, 12)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(isFolderDropTargeted ? Color.green.opacity(0.08) : Color.white.opacity(0.015))
+                            .fill(isFolderDropTargeted ? Color.green.opacity(0.08) : Color.surfaceWhite(0.015, for: colorScheme))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .strokeBorder(
@@ -4033,6 +4501,7 @@ private struct FolderSectionItemView: View {
 // MARK: - Reusable History Row Item
 private struct QuickPopoverHistoryRowItem: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     let item: CompressionResult
     let isEditMode: Bool
     @Binding var selectedResultIds: Set<UUID>
@@ -4092,7 +4561,7 @@ private struct QuickPopoverHistoryRowItem: View {
                 .accessibilityLabel(isSelected ? Text("Deselect item") : Text("Select item"))
             }
             
-            FileThumbnailView(url: item.outputURL, mediaType: item.mediaType, size: 30)
+            FileThumbnailView(url: item.outputURL, mediaType: item.mediaType, size: 30, usesDarkControlSurface: true)
             
             VStack(alignment: .leading, spacing: 2.5) {
                 Text(item.fileName)
@@ -4131,6 +4600,7 @@ private struct QuickPopoverHistoryRowItem: View {
                         .font(.system(size: 10.5, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                         .frame(width: 28, height: 28)
+                        .background(Color.clear.darkControlSurface(RoundedRectangle(cornerRadius: 7), borderless: true))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -4144,6 +4614,7 @@ private struct QuickPopoverHistoryRowItem: View {
                         .font(.system(size: 10.5, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                         .frame(width: 28, height: 28)
+                        .background(Color.clear.darkControlSurface(RoundedRectangle(cornerRadius: 7), borderless: true))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -4153,9 +4624,17 @@ private struct QuickPopoverHistoryRowItem: View {
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 6)
-        .background(isSelected ? state.accentColor.opacity(0.08) : Color.white.opacity(isHovered ? 0.025 : 0.008))
+        .background {
+            if colorScheme == .dark && !isSelected {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.clear)
+                    .darkControlSurface(RoundedRectangle(cornerRadius: 8), highlighted: isHovered)
+            } else {
+                (isSelected ? state.accentColor.opacity(0.08) : Color.surfaceWhite(isHovered ? 0.025 : 0.008, for: colorScheme))
+            }
+        }
         .overlay(alignment: .bottom) {
-            Rectangle().fill(Color.white.opacity(0.045)).frame(height: 0.5)
+            Rectangle().fill(Color.surfaceWhite(0.045, for: colorScheme)).frame(height: 0.5)
         }
         .onHover { h in
             withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
@@ -4171,6 +4650,7 @@ private struct QuickPopoverHistoryRowItem: View {
 // MARK: - Staged Queue Row Item with Per-File Custom Settings
 private struct StagedQueueRowItem: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var item: StagedQueueItem
     @State private var showSettingsSheet: Bool = false
     @State private var isHovered: Bool = false
@@ -4179,7 +4659,7 @@ private struct StagedQueueRowItem: View {
         HStack(spacing: 8) {
             ZStack {
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.surfaceWhite(0.06, for: colorScheme))
                     .frame(width: 28, height: 28)
                 
                 Image(systemName: iconForMediaType(item.mediaType))
@@ -4224,8 +4704,8 @@ private struct StagedQueueRowItem: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(Capsule().fill(Color.white.opacity(0.08)))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+                .background(Capsule().fill(Color.surfaceWhite(0.08, for: colorScheme)))
+                .overlay(Capsule().strokeBorder(Color.surfaceWhite(0.12, for: colorScheme), lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showSettingsSheet, arrowEdge: .trailing) {
@@ -4251,8 +4731,8 @@ private struct StagedQueueRowItem: View {
             ZStack {
                 NonDraggableArea()
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(isHovered ? 0.05 : 0.03))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
+                    .fill(Color.surfaceWhite(isHovered ? 0.05 : 0.03, for: colorScheme))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.surfaceWhite(0.06, for: colorScheme), lineWidth: 0.5))
             }
         )
         .onHover { h in

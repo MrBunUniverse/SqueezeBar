@@ -102,15 +102,20 @@ public struct HardwareAudioCompressor: Sendable {
         let writer = try AVAssetWriter(outputURL: destinationURL, fileType: .m4a)
         
         let numberOfChannels: Int = targetBitrate <= 32_000 ? 1 : 2
-        let sampleRate: Double = targetBitrate <= 16_000 ? 16000.0 : (targetBitrate <= 32_000 ? 22050.0 : 44100.0)
+        let sampleRate: Double = targetBitrate <= 8_000 ? 11025.0 : (targetBitrate <= 16_000 ? 16000.0 : (targetBitrate <= 32_000 ? 22050.0 : 44100.0))
         
-        let audioCompressionSettings: [String: Any] = [
+        var audioCompressionSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVNumberOfChannelsKey: numberOfChannels,
             AVSampleRateKey: sampleRate,
             AVEncoderBitRateKey: targetBitrate
         ]
         
+        // AAC's default variable rate can undershoot 8 kbps by more than half.
+        if targetBitrate <= 8_000 {
+            audioCompressionSettings[AVEncoderBitRateStrategyKey] = AVAudioBitRateStrategy_Constant
+        }
+
         let writerAudioInput = AVAssetWriterInput(
             mediaType: .audio,
             outputSettings: audioCompressionSettings

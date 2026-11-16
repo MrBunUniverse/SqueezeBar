@@ -103,7 +103,7 @@ struct SqueezeWaveMark: View {
 }
 
 /// Reports whether the hosting window is on screen and not fully covered.
-private struct WindowVisibilityReader: NSViewRepresentable {
+struct WindowVisibilityReader: NSViewRepresentable {
     @Binding var isVisible: Bool
 
     func makeNSView(context: Context) -> Probe {

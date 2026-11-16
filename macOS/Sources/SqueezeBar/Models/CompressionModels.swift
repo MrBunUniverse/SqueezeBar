@@ -205,6 +205,7 @@ public enum ImageFormatPolicy: String, Codable, Sendable, CaseIterable {
 
 // MARK: - Audio Bitrate Preference
 public enum AudioBitratePreference: String, Codable, Sendable, CaseIterable {
+    case k8 = "8 kbps (Phone Call)"
     case k16 = "16 kbps (Crushed Meme)"
     case k32 = "32 kbps (Lo-Fi Radio)"
     case k64 = "64 kbps (Voice)"
@@ -215,6 +216,7 @@ public enum AudioBitratePreference: String, Codable, Sendable, CaseIterable {
     
     public var bitrateInBps: Int {
         switch self {
+        case .k8: return 8_000
         case .k16: return 16_000
         case .k32: return 32_000
         case .k64: return 64_000

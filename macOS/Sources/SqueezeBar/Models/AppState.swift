@@ -48,7 +48,6 @@ public final class AppState: ObservableObject {
         
         static let outputSuffix = "squeezebar.outputSuffix"
         static let stripMetadata = "squeezebar.stripMetadata"
-        static let hapticEnabled = "squeezebar.hapticEnabled"
         static let soundEnabled = "squeezebar.soundEnabled"
         static let historyList = "squeezebar.historyList"
         static let totalBytesSaved = "squeezebar.totalBytesSaved"
@@ -422,9 +421,7 @@ public final class AppState: ObservableObject {
         }
         
         if addedCount > 0 {
-            if hapticEnabled {
-                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-            }
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         } else {
             reportNoSupportedFiles(urls: urls)
         }
@@ -479,12 +476,6 @@ public final class AppState: ObservableObject {
     @Published public var stripMetadata: Bool {
         didSet {
             UserDefaults.standard.set(stripMetadata, forKey: Keys.stripMetadata)
-        }
-    }
-    
-    @Published public var hapticEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(hapticEnabled, forKey: Keys.hapticEnabled)
         }
     }
     
@@ -647,12 +638,6 @@ public final class AppState: ObservableObject {
         self.appTransparency = min(max(UserDefaults.standard.object(forKey: Keys.appTransparency) as? Double ?? 0, 0), 1)
         self.appGlassFrost = min(max(UserDefaults.standard.object(forKey: Keys.appGlassFrost) as? Double ?? 0.12, 0), 1)
         self.appGlassDepth = min(max(UserDefaults.standard.object(forKey: Keys.appGlassDepth) as? Double ?? 0.65, 0), 1)
-        
-        if UserDefaults.standard.object(forKey: Keys.hapticEnabled) == nil {
-            self.hapticEnabled = true
-        } else {
-            self.hapticEnabled = UserDefaults.standard.bool(forKey: Keys.hapticEnabled)
-        }
         
         if UserDefaults.standard.object(forKey: Keys.soundEnabled) == nil {
             self.soundEnabled = true
@@ -1034,9 +1019,6 @@ public final class AppState: ObservableObject {
         
         showFailureBadge = true
         showSuccessBadge = false
-        if hapticEnabled {
-            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
-        }
         // Pop the ball out of its tucked state so the error is visible, then let it tuck away again.
         LiquidBallModel.shared.revealFromTuck()
         LiquidBallModel.shared.scheduleAutoTuck(afterSeconds: 3.5)
@@ -1062,13 +1044,6 @@ public final class AppState: ObservableObject {
         if soundEnabled {
             let soundName = soundTheme.systemSoundName
             NSSound(named: soundName)?.play()
-        }
-        
-        if hapticEnabled {
-            NSHapticFeedbackManager.defaultPerformer.perform(
-                .alignment,
-                performanceTime: .default
-            )
         }
         
         Task {

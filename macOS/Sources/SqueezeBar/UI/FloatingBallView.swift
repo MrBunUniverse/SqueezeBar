@@ -319,9 +319,7 @@ public struct FloatingBallView: View {
         group.notify(queue: .main) {
             guard !urls.isEmpty else { return }
             
-            if self.state.hapticEnabled {
-                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-            }
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             
             Task {
                 await MediaCompressionEngine.shared.processDroppedURLs(urls)

@@ -96,11 +96,12 @@ public struct QueueItemSettingsSheet: View {
                                 .foregroundColor(.primary)
                             
                             HStack(spacing: 6) {
-                                scaleButton(title: "100%", value: 1.0)
-                                scaleButton(title: "75%", value: 0.75)
-                                scaleButton(title: "50%", value: 0.50)
-                                scaleButton(title: "25%", value: 0.25)
+                                scaleButton(title: String(localized: "100%"), value: 1.0)
+                                scaleButton(title: String(localized: "75%"), value: 0.75)
+                                scaleButton(title: String(localized: "50%"), value: 0.50)
+                                scaleButton(title: String(localized: "25%"), value: 0.25)
                             }
+                            .modifier(SelectedPillDragGesture(options: [1.0, 0.75, 0.5, 0.25], selected: item.customResolutionScale) { item.customResolutionScale = $0 })
                         }
                     }
                     
@@ -111,11 +112,12 @@ public struct QueueItemSettingsSheet: View {
                             .foregroundColor(.primary)
                         
                         HStack(spacing: 6) {
-                            targetSizeButton(title: "Off", mode: .off)
-                            targetSizeButton(title: "25MB", mode: .discord25)
-                            targetSizeButton(title: "10MB", mode: .email10)
-                            targetSizeButton(title: "50MB", mode: .discord50)
+                            targetSizeButton(title: String(localized: "Off"), mode: .off)
+                            targetSizeButton(title: String(localized: "25MB"), mode: .discord25)
+                            targetSizeButton(title: String(localized: "10MB"), mode: .email10)
+                            targetSizeButton(title: String(localized: "50MB"), mode: .discord50)
                         }
+                        .modifier(SelectedPillDragGesture(options: [.off, .discord25, .email10, .discord50], selected: item.customTargetSizeMode) { item.customTargetSizeMode = $0 })
                     }
                     
                     // MARK: - Format-Specific Controls
@@ -205,11 +207,9 @@ public struct QueueItemSettingsSheet: View {
             Text("Audio Bitrate")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
             Picker("", selection: $item.customAudioBitrate) {
-                Text("320 kbps (Studio)").tag(AudioBitratePreference.k320)
-                Text("256 kbps (High)").tag(AudioBitratePreference.k256)
-                Text("192 kbps (Quality)").tag(AudioBitratePreference.k192)
-                Text("128 kbps (Standard)").tag(AudioBitratePreference.k128)
-                Text("64 kbps (Compact)").tag(AudioBitratePreference.k64)
+                ForEach(AudioBitratePreference.allCases.reversed(), id: \.self) { rate in
+                    Text(rate.displayName).tag(rate)
+                }
             }
             .pickerStyle(.menu)
         }
@@ -241,54 +241,22 @@ public struct QueueItemSettingsSheet: View {
         }
     }
     
-    private func scaleButton(title: LocalizedStringKey, value: Double) -> some View {
-        let isSelected = abs(item.customResolutionScale - value) < 0.01
-        return Button {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.72)) {
+    private func scaleButton(title: String, value: Double) -> some View {
+        UniversalPillGliderItem(item: value, title: title, icon: nil,
+            isSelected: abs(item.customResolutionScale - value) < 0.01,
+            accentColor: state.accentColor, contrastTextColor: state.contrastTextColor) {
                 item.customResolutionScale = value
             }
-        } label: {
-            Text(title)
-                .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
-                .foregroundColor(isSelected ? .white : .secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isSelected ? state.accentColor : Color.white.opacity(0.05))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(isSelected ? state.accentColor : Color.white.opacity(0.10), lineWidth: 0.5)
-                )
-        }
-        .buttonStyle(.plain)
     }
-    
-    private func targetSizeButton(title: LocalizedStringKey, mode: TargetSizeMode) -> some View {
-        let isSelected = (item.customTargetSizeMode == mode)
-        return Button {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.72)) {
+
+    private func targetSizeButton(title: String, mode: TargetSizeMode) -> some View {
+        UniversalPillGliderItem(item: mode, title: title, icon: nil,
+            isSelected: item.customTargetSizeMode == mode,
+            accentColor: state.accentColor, contrastTextColor: state.contrastTextColor) {
                 item.customTargetSizeMode = mode
             }
-        } label: {
-            Text(title)
-                .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
-                .foregroundColor(isSelected ? .white : .secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isSelected ? state.accentColor : Color.white.opacity(0.05))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(isSelected ? state.accentColor : Color.white.opacity(0.10), lineWidth: 0.5)
-                )
-        }
-        .buttonStyle(.plain)
     }
-    
+
     private func iconForMediaType(_ type: MediaType) -> String {
         switch type {
         case .image: return "photo"

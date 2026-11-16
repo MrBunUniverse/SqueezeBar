@@ -552,7 +552,7 @@ public struct BeforeAfterInspectorView: View {
                 .position(x: lineX, y: height / 2)
                 .shadow(color: .black.opacity(0.6), radius: 3)
             
-            // Center Pill Handle with Magnetic Snap and Haptic Alignment
+            // Center Pill Handle with Magnetic Snap and Alignment
             Circle()
                 .fill(Color.white)
                 .frame(width: 26, height: 26)

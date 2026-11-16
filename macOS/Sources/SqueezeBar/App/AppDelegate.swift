@@ -158,10 +158,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             guard AppState.shared.finderServiceEnabled else { return }
             
-            // Play haptic feedback
-            if AppState.shared.hapticEnabled {
-                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-            }
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
             
             await MediaCompressionEngine.shared.processDroppedURLs(urls)
         }
