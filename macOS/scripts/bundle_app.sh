@@ -38,10 +38,12 @@ if [ -f "Resources/Localizable.xcstrings" ]; then
     xcrun xcstringstool compile "Resources/Localizable.xcstrings" --output-directory "${DEST_APP}/Contents/Resources"
 fi
 
-# Optional codesign with ad-hoc signature for local execution
+# Ad-hoc signature with the hardened runtime. The app is not sandboxed, so it needs no entitlements.
+# ponytail: ad-hoc only, so downloads need Gatekeeper's "Open Anyway" (see README). Signing with a
+# Developer ID instead of "-", then notarytool + stapler, removes that step.
 if command -v codesign &> /dev/null; then
-    echo "[SqueezeBar] Signing application bundle with entitlements..."
-    codesign --force --deep --sign - --entitlements "Resources/SqueezeBar.entitlements" "${DEST_APP}"
+    echo "[SqueezeBar] Signing application bundle..."
+    codesign --force --options runtime --sign - "${DEST_APP}"
 fi
 
 echo "[SqueezeBar] Successfully built ${APP_NAME}"

@@ -81,7 +81,7 @@ public final class FolderWatchService: @unchecked Sendable {
             guard !newItems.isEmpty, !Task.isCancelled else { return }
             
             let config = await AppState.shared.currentConfiguration()
-            let suffix = config.suffix.isEmpty ? "_min" : config.suffix
+            let suffix = MediaCompressionEngine.outputSuffix(config.suffix)
             
             var candidates: [(name: String, url: URL)] = []
             var skippedNames: [String] = []

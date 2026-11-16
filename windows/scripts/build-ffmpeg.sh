@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build the size-trimmed FFmpeg the Windows app bundles as its fallback engine: only the codecs, formats and
-# filters SqueezeBar.Media uses (see Compressors.cs, Ffmpeg.cs, MediaTests.cs). Drop-in for the stock build
-# that fetch-ffmpeg.sh downloads: windows/vendor/ffmpeg/<arch>/ffmpeg.exe + LICENSE.txt.
+# filters SqueezeBar.Media uses (see Compressors.cs, Ffmpeg.cs, MediaTests.cs). This is the build releases ship;
+# a drop-in for the stock build that fetch-ffmpeg.sh downloads: windows/vendor/ffmpeg/<arch>/ffmpeg.exe + LICENSE.txt.
 # Cross-compiled on macOS with llvm-mingw; everything is static, GPL v2 or later (x264, x265).
 #   brew install nasm pkgconf meson ninja cmake
 #   ./scripts/build-ffmpeg.sh            # x64 and arm64
@@ -21,22 +21,30 @@ WEBP=1.6.0
 OPUS=1.6.1
 ZLIB=1.3.2
 
-get() { # <dir> <tarball url>
+get() { # <dir> <tarball url> <sha256>: nothing is unpacked unless the download matches the pinned hash
   [ -d "$1" ] && return
-  rm -rf "$1.part"; mkdir -p "$1.part"
+  rm -rf "$1.part" "$1.tar"; mkdir -p "$1.part"
   echo "fetching $2"
-  curl -fsSL --retry 3 "$2" | tar -x -C "$1.part" --strip-components 1
+  curl -fsSL --retry 3 -o "$1.tar" "$2"
+  echo "$3  $1.tar" | shasum -a 256 -c - || { rm -f "$1.tar"; echo "checksum mismatch for $2"; exit 1; }
+  tar -x -f "$1.tar" -C "$1.part" --strip-components 1
+  rm -f "$1.tar"
   mv "$1.part" "$1"
 }
-get "$B/llvm-mingw" "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW/llvm-mingw-$LLVM_MINGW-ucrt-macos-universal.tar.xz"
-get "$S/ffmpeg" "https://ffmpeg.org/releases/ffmpeg-$FFMPEG.tar.xz"
-get "$S/x264"   "https://code.videolan.org/videolan/x264/-/archive/$X264/x264-$X264.tar.gz"
-get "$S/x265"   "https://bitbucket.org/multicoreware/x265_git/get/$X265.tar.gz"
-get "$S/svtav1" "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v$SVTAV1/SVT-AV1-v$SVTAV1.tar.gz"
-get "$S/dav1d"  "https://code.videolan.org/videolan/dav1d/-/archive/$DAV1D/dav1d-$DAV1D.tar.gz"
-get "$S/webp"   "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$WEBP.tar.gz"
-get "$S/opus"   "https://downloads.xiph.org/releases/opus/opus-$OPUS.tar.gz"
-get "$S/zlib"   "https://github.com/madler/zlib/releases/download/v$ZLIB/zlib-$ZLIB.tar.gz"
+# Changing a version above means updating its hash here. llvm-mingw and zlib hashes are the digests GitHub
+# publishes for the release assets, Opus's comes from xiph.org's SHA256SUMS.txt; the rest were taken from the
+# first download (2026-10-16). x264, x265, SVT-AV1 and dav1d are archives the git hosts generate on request;
+# if one of those ever stops matching, compare against a fresh download before trusting the new hash.
+get "$B/llvm-mingw" "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW/llvm-mingw-$LLVM_MINGW-ucrt-macos-universal.tar.xz" \
+  52e5f5a7b131021d0c39a37a38fa380a1da7885cd04bd61afd0cd4ecfb8bc1f3
+get "$S/ffmpeg" "https://ffmpeg.org/releases/ffmpeg-$FFMPEG.tar.xz" 7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
+get "$S/x264"   "https://code.videolan.org/videolan/x264/-/archive/$X264/x264-$X264.tar.gz" cd71a7515b0e9a012e1ac9b1f8415bebcaf6fc97d4db32286642ac4c0fbe24f9
+get "$S/x265"   "https://bitbucket.org/multicoreware/x265_git/get/$X265.tar.gz" 0a3d41f6b4e2fe5a49d783d6631bd1a49c44cdf999074a3ff09e2cb71ac8ed33
+get "$S/svtav1" "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v$SVTAV1/SVT-AV1-v$SVTAV1.tar.gz" c7b13c4a84bd3751aa35fcc72be13e6875467e7c2216879251a486e5b1e4e740
+get "$S/dav1d"  "https://code.videolan.org/videolan/dav1d/-/archive/$DAV1D/dav1d-$DAV1D.tar.gz" a1d5b63d2d38ec9bd03acf643caa51fa22edd1e89c5a109c4807717216bbec07
+get "$S/webp"   "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$WEBP.tar.gz" e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
+get "$S/opus"   "https://downloads.xiph.org/releases/opus/opus-$OPUS.tar.gz" 6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1
+get "$S/zlib"   "https://github.com/madler/zlib/releases/download/v$ZLIB/zlib-$ZLIB.tar.gz" bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
 
 export PATH="$B/llvm-mingw/bin:$PATH"
 JOBS="$(sysctl -n hw.ncpu)"
@@ -135,6 +143,11 @@ EOF
     echo "License version 2 or later. It was built by windows/scripts/build-ffmpeg.sh in the SqueezeBar source, which"
     echo "names the exact source versions and build options. It contains these libraries, whose licences follow:"
     echo "x264 ($X264), x265 $X265, SVT-AV1 $SVTAV1, dav1d $DAV1D, libwebp $WEBP, Opus $OPUS, zlib $ZLIB."
+    echo
+    echo "Corresponding source: the exact source archives (with their SHA-256 hashes) are listed in"
+    echo "windows/scripts/build-ffmpeg.sh at https://github.com/MrBunUniverse/SqueezeBar. For at least three years after"
+    echo "this release, the SqueezeBar authors will also provide a copy of that source on request: open an issue at"
+    echo "https://github.com/MrBunUniverse/SqueezeBar/issues."
     for f in ffmpeg/LICENSE.md ffmpeg/COPYING.GPLv2 x264/COPYING x265/COPYING svtav1/LICENSE.md svtav1/PATENTS.md \
              dav1d/COPYING webp/COPYING webp/PATENTS opus/COPYING zlib/LICENSE; do
       printf '\n\n======== %s ========\n\n' "$f"; cat "$S/$f"
