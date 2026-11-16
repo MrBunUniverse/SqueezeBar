@@ -19,8 +19,42 @@ public final class LiquidBallModel: ObservableObject {
     @Published public var isHovered: Bool = false
     @Published public var dockEdge: DockEdge = .right
     @Published public var isTucked: Bool = true
+    /// Set at the end of the quit pop: the orb is gone and only its droplets are drawn.
+    @Published public private(set) var isBurst: Bool = false
+    
+    static let swellDuration: Double = 0.10
+    static let burstDuration: Double = 0.30
     
     private var tuckTimerTask: Task<Void, Never>?
+    
+    // MARK: - Launch Inflate & Quit Pop
+    
+    /// Grows the ball in from a speck when the app launches.
+    public func inflateIn() {
+        // Never 0: FloatingBallHostingView.hitTest divides by these.
+        scaleX = 0.05
+        scaleY = 0.05
+        Task { @MainActor in
+            // Let the collapsed ball render once, otherwise there is nothing to animate from.
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) {
+                self.scaleX = 1.0
+                self.scaleY = 1.0
+            }
+        }
+    }
+    
+    /// Swells the ball, then bursts it into droplets. Returns once the droplets have faded.
+    public func playPop() async {
+        cancelTuckTimer()
+        withAnimation(.easeOut(duration: Self.swellDuration)) {
+            scaleX = 1.18
+            scaleY = 1.18
+        }
+        try? await Task.sleep(nanoseconds: UInt64(Self.swellDuration * 1_000_000_000))
+        isBurst = true
+        try? await Task.sleep(nanoseconds: UInt64(Self.burstDuration * 1_000_000_000))
+    }
     
     public func applyMotionVelocity(dx: CGFloat, dy: CGFloat) {
         // Only publish on real changes: every @Published set re-renders the ball, even when the value is the same.
@@ -282,6 +316,10 @@ public final class FloatingBallController: NSObject, NSWindowDelegate {
     public func hide() {
         snapTimer?.invalidate()
         ballPanel?.orderOut(nil)
+    }
+    
+    public var isBallVisible: Bool {
+        ballPanel?.isVisible ?? false
     }
     
     public func toggle() {

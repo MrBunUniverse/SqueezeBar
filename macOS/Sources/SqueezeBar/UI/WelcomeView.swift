@@ -67,7 +67,7 @@ public final class WelcomeWindowController: NSObject, NSWindowDelegate, Observab
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = String(localized: "Allow Folder Access")
-        panel.message = "Choose the folder SqueezeBar can read and write."
+        panel.message = String(localized: "Choose the folder SqueezeBar can read and write.")
         isRequesting = true
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self else { return }

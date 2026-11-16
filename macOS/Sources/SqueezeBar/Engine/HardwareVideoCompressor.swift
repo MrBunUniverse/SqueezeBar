@@ -278,7 +278,8 @@ public struct HardwareVideoCompressor: Sendable {
             let audioCompressionSettings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
                 AVNumberOfChannelsKey: targetAudioBitrate <= 48_000 ? 1 : 2, // Mono for super small sizes like 48k
-                AVSampleRateKey: targetAudioBitrate <= 48_000 ? 32000.0 : 44100.0,
+                // AAC can't encode 16 kbps at 32 kHz ("Cannot Encode Media"); same floor as HardwareAudioCompressor.
+                AVSampleRateKey: targetAudioBitrate <= 16_000 ? 16000.0 : (targetAudioBitrate <= 48_000 ? 32000.0 : 44100.0),
                 AVEncoderBitRateKey: targetAudioBitrate
             ]
             let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioCompressionSettings)
@@ -291,10 +292,10 @@ public struct HardwareVideoCompressor: Sendable {
         
         // ---- Start encoding pipeline ----
         guard writer.startWriting() else {
-            throw VideoCompressorError.encodingFailed(writer.error?.localizedDescription ?? "Start writing error")
+            throw VideoCompressorError.encodingFailed(writer.error?.localizedDescription ?? String(localized: "Start writing error"))
         }
         guard reader.startReading() else {
-            throw VideoCompressorError.encodingFailed(reader.error?.localizedDescription ?? "Start reading error")
+            throw VideoCompressorError.encodingFailed(reader.error?.localizedDescription ?? String(localized: "Start reading error"))
         }
         
         writer.startSession(atSourceTime: .zero)
@@ -397,7 +398,8 @@ public struct HardwareVideoCompressor: Sendable {
             targetFPS = sourceFPS
         }
         
-        let frameInterval = 1.0 / max(targetFPS, 1.0)
+        let frameStep = max(1, Int((sourceFPS / max(targetFPS, 1.0)).rounded()))
+        let frameInterval = Double(frameStep) / sourceFPS
         
         // Adaptive resolution for GIF (keep dimensions compact to avoid huge files)
         let manualScale = min(max(config.videoResolutionScale, 0.20), 1.0)
@@ -438,12 +440,11 @@ public struct HardwareVideoCompressor: Sendable {
         reader.add(trackOutput)
         
         guard reader.startReading() else {
-            throw VideoCompressorError.encodingFailed("Failed to start reading frames for GIF")
+            throw VideoCompressorError.encodingFailed(String(localized: "Failed to start reading frames for GIF"))
         }
         
-        let mutableData = CFDataCreateMutable(kCFAllocatorDefault, 0)!
-        guard let destination = CGImageDestinationCreateWithData(
-            mutableData,
+        guard let destination = CGImageDestinationCreateWithURL(
+            destinationURL as CFURL,
             UTType.gif.identifier as CFString,
             0,
             nil
@@ -475,6 +476,7 @@ public struct HardwareVideoCompressor: Sendable {
                 }
                 if control.isCancelled {
                     reader.cancelReading()
+                    try? FileManager.default.removeItem(at: destinationURL)
                     throw VideoCompressorError.cancelled
                 }
             }
@@ -513,16 +515,16 @@ public struct HardwareVideoCompressor: Sendable {
         }
         
         guard addedCount > 0 else {
-            throw VideoCompressorError.encodingFailed("No frames extracted from video")
+            try? FileManager.default.removeItem(at: destinationURL)
+            throw VideoCompressorError.encodingFailed(String(localized: "No frames extracted from video"))
         }
         
         progressHandler?(0.95)
         guard CGImageDestinationFinalize(destination) else {
-            throw VideoCompressorError.encodingFailed("Failed to finalize animated GIF")
+            try? FileManager.default.removeItem(at: destinationURL)
+            throw VideoCompressorError.encodingFailed(String(localized: "Failed to finalize animated GIF"))
         }
         
-        let finalData = mutableData as Data
-        try finalData.write(to: destinationURL, options: .atomic)
         progressHandler?(1.0)
     }
     
@@ -583,8 +585,51 @@ private final class VideoEncodingContext: @unchecked Sendable {
             let audioQueue = DispatchQueue(label: "com.squeezebar.audio.encode", qos: .userInitiated)
             let group = DispatchGroup()
             
+            let stateLock = NSLock()
             var hasFailed = false
             var failureError: Error?
+            var videoFinished = false
+            var audioFinished = (self.writerAudioInput == nil || self.readerAudioOutput == nil)
+
+            let finishVideo = { [weak self] in
+                stateLock.lock()
+                let shouldFinish = !videoFinished
+                videoFinished = true
+                stateLock.unlock()
+                if shouldFinish {
+                    self?.writerVideoInput.markAsFinished()
+                    group.leave()
+                }
+            }
+
+            let finishAudio = { [weak self] in
+                stateLock.lock()
+                let shouldFinish = !audioFinished
+                audioFinished = true
+                stateLock.unlock()
+                if shouldFinish {
+                    self?.writerAudioInput?.markAsFinished()
+                    group.leave()
+                }
+            }
+
+            let recordFailure: (Error) -> Void = { [weak self] error in
+                stateLock.lock()
+                if !hasFailed {
+                    hasFailed = true
+                    failureError = error
+                }
+                stateLock.unlock()
+                self?.reader.cancelReading()
+                finishVideo()
+                finishAudio()
+            }
+
+            let isFailed: () -> Bool = {
+                stateLock.lock()
+                defer { stateLock.unlock() }
+                return hasFailed
+            }
             
             // Frame rate cadence filter
             let minFrameDeltaSec: Double = {
@@ -595,18 +640,22 @@ private final class VideoEncodingContext: @unchecked Sendable {
             }()
             var lastAppendedTimeSec: Double = -1.0
             
-            // Video encoding loop
+            // Count every input before either encoding queue can fail.
             group.enter()
+            if self.writerAudioInput != nil && self.readerAudioOutput != nil {
+                group.enter()
+            }
+
+            // Video encoding loop
             self.writerVideoInput.requestMediaDataWhenReady(on: videoQueue) { [weak self] in
                 guard let self = self else { return }
                 while self.writerVideoInput.isReadyForMoreMediaData {
+                    if isFailed() {
+                        finishVideo()
+                        return
+                    }
                     if let control = self.control, !control.checkpoint() {
-                        self.writerVideoInput.markAsFinished()
-                        if !hasFailed {
-                            hasFailed = true
-                            failureError = HardwareVideoCompressor.VideoCompressorError.cancelled
-                        }
-                        group.leave()
+                        recordFailure(HardwareVideoCompressor.VideoCompressorError.cancelled)
                         return
                     }
                     if let sampleBuffer = self.readerVideoOutput.copyNextSampleBuffer() {
@@ -627,21 +676,17 @@ private final class VideoEncodingContext: @unchecked Sendable {
                         lastAppendedTimeSec = currentSec
                         
                         if !self.writerVideoInput.append(sampleBuffer) {
-                            self.writerVideoInput.markAsFinished()
-                            if !hasFailed {
-                                hasFailed = true
-                                failureError = self.writer.error ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed("Failed appending video buffer")
-                            }
-                            group.leave()
+                            let err = self.writer.error ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed(String(localized: "Failed appending video buffer"))
+                            recordFailure(err)
                             return
                         }
                     } else {
-                        self.writerVideoInput.markAsFinished()
-                        if self.reader.status == .failed && !hasFailed {
-                            hasFailed = true
-                            failureError = self.reader.error ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed("Reader failed during video processing")
+                        if self.reader.status == .failed {
+                            let err = self.reader.error ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed(String(localized: "Reader failed during video processing"))
+                            recordFailure(err)
+                        } else {
+                            finishVideo()
                         }
-                        group.leave()
                         return
                     }
                 }
@@ -649,28 +694,30 @@ private final class VideoEncodingContext: @unchecked Sendable {
             
             // Audio encoding loop (if present)
             if self.writerAudioInput != nil && self.readerAudioOutput != nil {
-                group.enter()
                 self.writerAudioInput?.requestMediaDataWhenReady(on: audioQueue) { [weak self] in
                     guard let self = self, let wInput = self.writerAudioInput, let rOutput = self.readerAudioOutput else { return }
                     while wInput.isReadyForMoreMediaData {
+                        if isFailed() {
+                            finishAudio()
+                            return
+                        }
                         if let control = self.control, !control.checkpoint() {
-                            wInput.markAsFinished()
-                            if !hasFailed {
-                                hasFailed = true
-                                failureError = HardwareVideoCompressor.VideoCompressorError.cancelled
-                            }
-                            group.leave()
+                            recordFailure(HardwareVideoCompressor.VideoCompressorError.cancelled)
                             return
                         }
                         if let sampleBuffer = rOutput.copyNextSampleBuffer() {
                             if !wInput.append(sampleBuffer) {
-                                wInput.markAsFinished()
-                                group.leave()
+                                let err = self.writer.error ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed(String(localized: "Failed appending audio buffer"))
+                                recordFailure(err)
                                 return
                             }
                         } else {
-                            wInput.markAsFinished()
-                            group.leave()
+                            if self.reader.status == .failed {
+                                let err = self.reader.error ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed(String(localized: "Reader failed during audio processing"))
+                                recordFailure(err)
+                            } else {
+                                finishAudio()
+                            }
                             return
                         }
                     }
@@ -679,10 +726,15 @@ private final class VideoEncodingContext: @unchecked Sendable {
             
             group.notify(queue: .global(qos: .userInitiated)) { [weak self] in
                 guard let self = self else { return }
-                if hasFailed {
+                stateLock.lock()
+                let failed = hasFailed
+                let err = failureError
+                stateLock.unlock()
+
+                if failed {
                     self.reader.cancelReading()
                     self.writer.cancelWriting()
-                    continuation.resume(throwing: failureError ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed("Unknown failure"))
+                    continuation.resume(throwing: err ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed(String(localized: "Unknown failure")))
                     return
                 }
                 
@@ -691,7 +743,7 @@ private final class VideoEncodingContext: @unchecked Sendable {
                         self.progressHandler?(1.0)
                         continuation.resume()
                     } else {
-                        continuation.resume(throwing: self.writer.error ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed("Failed to finalize video"))
+                        continuation.resume(throwing: self.writer.error ?? HardwareVideoCompressor.VideoCompressorError.encodingFailed(String(localized: "Failed to finalize video")))
                     }
                 }
             }
