@@ -77,97 +77,102 @@ public struct AcceleratedPDFCompressor: Sendable {
         
         for index in 0..<totalPages {
             if control?.isCancelled == true { throw CancellationError() }
-            guard let page = sourceDoc.page(at: index) else { throw PDFCompressorError.cannotCreatePage }
-            
-            // Text and vector pages are copied as they are: rendering them to JPEG loses the text and usually grows the file.
-            if let cgPage = page.pageRef, !Self.pageHasImages(cgPage) {
-                guard let copy = page.copy() as? PDFPage else { throw PDFCompressorError.cannotCreatePage }
-                outputDoc.insert(copy, at: outputDoc.pageCount)
-                progressHandler(Double(index + 1) / Double(totalPages))
-                continue
+            try autoreleasepool {
+                guard let page = sourceDoc.page(at: index) else { throw PDFCompressorError.cannotCreatePage }
+                
+                // Text and vector pages are copied as they are: rendering them to JPEG loses the text and usually grows the file.
+                if let cgPage = page.pageRef, !Self.pageHasImages(cgPage) {
+                    guard let copy = page.copy() as? PDFPage else { throw PDFCompressorError.cannotCreatePage }
+                    outputDoc.insert(copy, at: outputDoc.pageCount)
+                    progressHandler(Double(index + 1) / Double(totalPages))
+                    return
+                }
+                
+                let mediaBounds = page.bounds(for: .mediaBox)
+                let pageRotation = page.rotation
+                if pageRotation != 0 {
+                    page.rotation = 0
+                }
+                
+                let scale = max(0.5, targetDPI / 72.0)
+                let pixelW = max(1, Int((mediaBounds.width * scale).rounded()))
+                let pixelH = max(1, Int((mediaBounds.height * scale).rounded()))
+                
+                // Render Page to Bitmap
+                let colorSpace: CGColorSpace
+                let bitmapInfo: UInt32
+                if config.pdfGrayscale {
+                    colorSpace = CGColorSpaceCreateDeviceGray()
+                    bitmapInfo = CGImageAlphaInfo.none.rawValue
+                } else {
+                    colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+                    bitmapInfo = CGImageAlphaInfo.noneSkipLast.rawValue
+                }
+                
+                guard let context = CGContext(
+                    data: nil,
+                    width: pixelW,
+                    height: pixelH,
+                    bitsPerComponent: 8,
+                    bytesPerRow: 0,
+                    space: colorSpace,
+                    bitmapInfo: bitmapInfo
+                ) else {
+                    throw PDFCompressorError.cannotCreatePage
+                }
+                
+                context.interpolationQuality = .high
+                
+                // Fill background white
+                if config.pdfGrayscale {
+                    context.setFillColor(gray: 1.0, alpha: 1.0)
+                } else {
+                    context.setFillColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
+                }
+                context.fill(CGRect(x: 0, y: 0, width: pixelW, height: pixelH))
+                
+                // Apply scale
+                context.saveGState()
+                context.scaleBy(x: scale, y: scale)
+                page.draw(with: .mediaBox, to: context)
+                context.restoreGState()
+                
+                guard let cgImage = context.makeImage() else {
+                    throw PDFCompressorError.cannotCreatePage
+                }
+                
+                // JPEG Recompression of page image
+                let imgData = NSMutableData()
+                guard let dest = CGImageDestinationCreateWithData(
+                    imgData,
+                    UTType.jpeg.identifier as CFString,
+                    1,
+                    nil
+                ) else {
+                    throw PDFCompressorError.cannotCreatePage
+                }
+                
+                let options: [CFString: Any] = [
+                    kCGImageDestinationLossyCompressionQuality: targetQuality as CFNumber
+                ]
+                CGImageDestinationAddImage(dest, cgImage, options as CFDictionary)
+                CGImageDestinationFinalize(dest)
+                
+                guard let compressedImage = NSImage(data: imgData as Data),
+                      let newPage = PDFPage(image: compressedImage) else {
+                    throw PDFCompressorError.cannotCreatePage
+                }
+                
+                newPage.setBounds(mediaBounds, for: .mediaBox)
+                if pageRotation != 0 {
+                    newPage.rotation = pageRotation
+                }
+                
+                outputDoc.insert(newPage, at: outputDoc.pageCount)
+                
+                let progress = Double(index + 1) / Double(totalPages)
+                progressHandler(progress)
             }
-            
-            let mediaBounds = page.bounds(for: .mediaBox)
-            let pageRotation = page.rotation
-            
-            let scale = max(0.5, targetDPI / 72.0)
-            let pixelW = max(1, Int((mediaBounds.width * scale).rounded()))
-            let pixelH = max(1, Int((mediaBounds.height * scale).rounded()))
-            
-            // Render Page to Bitmap
-            let colorSpace: CGColorSpace
-            let bitmapInfo: UInt32
-            if config.pdfGrayscale {
-                colorSpace = CGColorSpaceCreateDeviceGray()
-                bitmapInfo = CGImageAlphaInfo.none.rawValue
-            } else {
-                colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-                bitmapInfo = CGImageAlphaInfo.noneSkipLast.rawValue
-            }
-            
-            guard let context = CGContext(
-                data: nil,
-                width: pixelW,
-                height: pixelH,
-                bitsPerComponent: 8,
-                bytesPerRow: 0,
-                space: colorSpace,
-                bitmapInfo: bitmapInfo
-            ) else {
-                throw PDFCompressorError.cannotCreatePage
-            }
-            
-            context.interpolationQuality = .high
-            
-            // Fill background white
-            if config.pdfGrayscale {
-                context.setFillColor(gray: 1.0, alpha: 1.0)
-            } else {
-                context.setFillColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
-            }
-            context.fill(CGRect(x: 0, y: 0, width: pixelW, height: pixelH))
-            
-            // Apply scale
-            context.saveGState()
-            context.scaleBy(x: scale, y: scale)
-            page.draw(with: .mediaBox, to: context)
-            context.restoreGState()
-            
-            guard let cgImage = context.makeImage() else {
-                throw PDFCompressorError.cannotCreatePage
-            }
-            
-            // JPEG Recompression of page image
-            let imgData = NSMutableData()
-            guard let dest = CGImageDestinationCreateWithData(
-                imgData,
-                UTType.jpeg.identifier as CFString,
-                1,
-                nil
-            ) else {
-                throw PDFCompressorError.cannotCreatePage
-            }
-            
-            let options: [CFString: Any] = [
-                kCGImageDestinationLossyCompressionQuality: targetQuality as CFNumber
-            ]
-            CGImageDestinationAddImage(dest, cgImage, options as CFDictionary)
-            CGImageDestinationFinalize(dest)
-            
-            guard let compressedImage = NSImage(data: imgData as Data),
-                  let newPage = PDFPage(image: compressedImage) else {
-                throw PDFCompressorError.cannotCreatePage
-            }
-            
-            newPage.setBounds(mediaBounds, for: .mediaBox)
-            if pageRotation != 0 {
-                newPage.rotation = pageRotation
-            }
-            
-            outputDoc.insert(newPage, at: outputDoc.pageCount)
-            
-            let progress = Double(index + 1) / Double(totalPages)
-            progressHandler(progress)
         }
         
         // Metadata Policy

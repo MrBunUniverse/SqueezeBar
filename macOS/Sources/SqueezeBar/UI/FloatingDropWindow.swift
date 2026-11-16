@@ -61,6 +61,10 @@ public final class FloatingDropWindowController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
     
+    private func hide() {
+        floatingPanel?.orderOut(nil)
+    }
+    
     public func updateWindowDimensionsForScale(_ scale: UIScaleOption) {
         guard let panel = floatingPanel else { return }
         panel.minSize = NSSize(width: scale.baseWidth - 20, height: scale.baseHeight - 40)
@@ -103,15 +107,14 @@ public final class FloatingDropWindowController: NSObject, NSWindowDelegate {
     }
     
     public func dockToMenuBar() {
-        AppState.shared.isDetached = false
-        floatingPanel?.orderOut(nil)
+        hide()
     }
 
     public func dismissDragPresentation() {
-        floatingPanel?.orderOut(nil)
+        hide()
     }
     
     public func windowWillClose(_ notification: Notification) {
-        AppState.shared.isDetached = false
+        hide()
     }
 }

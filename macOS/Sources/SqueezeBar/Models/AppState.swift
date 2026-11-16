@@ -429,6 +429,9 @@ public final class AppState: ObservableObject {
             if !items.isEmpty && hapticEnabled {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             }
+            if items.isEmpty {
+                reportNoSupportedFiles(urls: urls)
+            }
         }
     }
     
@@ -533,7 +536,8 @@ public final class AppState: ObservableObject {
     }
     
     @Published public var isPinned: Bool = false
-    @Published public var isDetached: Bool = false
+    // The menu bar icon always opens the movable window (the popover is no longer the default).
+    @Published public var isDetached: Bool = true
     @Published public var inspectedResult: CompressionResult? = nil
     
     // MARK: - Runtime State
@@ -770,7 +774,7 @@ public final class AppState: ObservableObject {
             
             index += 1
         }
-        saveHistory()
+        flushHistory()
     }
     
     private func saveFolders() {
@@ -829,61 +833,48 @@ public final class AppState: ObservableObject {
         }
         
         // 2. Check for image data (e.g. screenshot copied to clipboard)
-        if let imgData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
-            let config = currentConfiguration()
-            Task {
-                // Encoding a large screenshot takes seconds, so it runs off the main actor.
-                let outcome = await Task.detached(priority: .userInitiated) { () -> Result<(result: CompressionResult, data: Data), Error> in
-                    Result {
-                        let folder = try Self.freshClipboardFolder()
-                        let tempSource = folder.appendingPathComponent("Clipboard.png")
-                        let tempDest = folder.appendingPathComponent("Clipboard_min.\(AcceleratedImageCompressor().outputExtension(for: tempSource, config: config))")
-                        try imgData.write(to: tempSource)
-                        let startTime = Date()
-                        try AcceleratedImageCompressor().compressImage(from: tempSource, to: tempDest, config: config)
-                        let compressedData = try Data(contentsOf: tempDest)
-                        let result = CompressionResult(
-                            originalURL: tempSource,
-                            outputURL: tempDest,
-                            originalSize: Int64(imgData.count),
-                            compressedSize: Int64(compressedData.count),
-                            duration: Date().timeIntervalSince(startTime),
-                            mediaType: .image
-                        )
-                        return (result, compressedData)
+        if let rawData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
+            let pngData: Data
+            if pasteboard.data(forType: .png) != nil {
+                pngData = rawData
+            } else if let rep = NSBitmapImageRep(data: rawData),
+                      let converted = rep.representation(using: .png, properties: [:]) {
+                pngData = converted
+            } else {
+                pngData = rawData
+            }
+            
+            let tempSource = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard_temp_\(UUID().uuidString).png")
+            do {
+                try pngData.write(to: tempSource)
+            } catch {
+                recordFailure(fileName: String(localized: "Clipboard"), message: error.localizedDescription)
+                return
+            }
+            
+            Task { @MainActor in
+                defer { try? FileManager.default.removeItem(at: tempSource) }
+                await MediaCompressionEngine.shared.processDroppedURLs([tempSource])
+                if let result = self.recentResults.first(where: { $0.originalURL == tempSource }),
+                   let compressedData = try? Data(contentsOf: result.outputURL) {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    if let compressedImage = NSImage(data: compressedData) {
+                        pb.writeObjects([compressedImage, result.outputURL as NSURL])
+                    } else {
+                        pb.writeObjects([result.outputURL as NSURL])
                     }
-                }.value
-                
-                switch outcome {
-                case .failure(let error):
-                    recordFailure(fileName: String(localized: "Clipboard image"), message: error.localizedDescription)
-                case .success(let outcome):
-                    // Write compressed data back to clipboard
-                    pasteboard.clearContents()
-                    if let compressedImage = NSImage(data: outcome.data) {
-                        pasteboard.writeObjects([compressedImage, outcome.result.outputURL as NSURL])
-                    }
-                    recordResult(outcome.result)
-                    triggerSuccessBadge()
                 }
             }
+            return
         }
+        
+        recordFailure(fileName: String(localized: "Clipboard"), message: String(localized: "Clipboard has no image or files"))
     }
     
-    /// Clipboard squeezes are kept in one folder that only ever holds the latest pair, since copied screenshots can be private.
-    /// The latest output stays on disk because the clipboard also carries it as a file.
-    nonisolated static let clipboardFolder = FileManager.default.temporaryDirectory.appendingPathComponent("SqueezeBar Clipboard", isDirectory: true)
-    
-    nonisolated private static func freshClipboardFolder() throws -> URL {
-        try? FileManager.default.removeItem(at: clipboardFolder)
-        try FileManager.default.createDirectory(at: clipboardFolder, withIntermediateDirectories: true)
-        return clipboardFolder
-    }
-    
-    /// Run at launch: removes the last clipboard pair, plus the loose files earlier versions left in the temp folder.
+    /// Run at launch: removes clipboard squeezes left in the temp folder, since copied screenshots can be private.
     nonisolated public static func removeClipboardFiles() {
         let fm = FileManager.default
-        try? fm.removeItem(at: clipboardFolder)
         let temp = fm.temporaryDirectory
         for name in (try? fm.contentsOfDirectory(atPath: temp.path)) ?? []
         where name.hasPrefix("clipboard_temp_") || name.hasPrefix("clipboard_squeezed_") {
@@ -907,7 +898,7 @@ public final class AppState: ObservableObject {
         }
     }
     
-    public func finishJob(id: UUID, result: CompressionResult?, error: String?) {
+    public func finishJob(id: UUID, result: CompressionResult?, error: String?, statusOverride: String? = nil) {
         JobControlRegistry.shared.remove(id)
         if let idx = jobs.activeJobs.firstIndex(where: { $0.id == id }) {
             jobs.activeJobs[idx].isFinished = true
@@ -917,9 +908,14 @@ public final class AppState: ObservableObject {
                 jobs.activeJobs[idx].statusText = String(localized: "Saved \(result.formattedSaved) (-\(Int(result.percentSaved))%)")
                 jobs.activeJobs[idx].progress = 1.0
                 recordResult(result)
+            } else if let statusOverride {
+                jobs.activeJobs[idx].statusText = statusOverride
+                jobs.activeJobs[idx].progress = 1.0
+            } else if error == "Cancelled" {
+                jobs.activeJobs[idx].statusText = String(localized: "Cancelled")
             } else {
                 jobs.activeJobs[idx].statusText = error ?? String(localized: "Failed")
-                if let error, error != "Cancelled", error != MediaCompressionEngine.alreadyOptimizedMessage {
+                if let error {
                     recordFailure(fileName: jobs.activeJobs[idx].fileURL.lastPathComponent, message: error)
                 }
             }
@@ -972,14 +968,14 @@ public final class AppState: ObservableObject {
     }
     
     public func cancelJob(id: UUID) {
+        guard let idx = jobs.activeJobs.firstIndex(where: { $0.id == id }),
+              !jobs.activeJobs[idx].isFinished else { return }
         // Stop the encode immediately instead of waiting for the engine actor.
         JobControlRegistry.shared.control(for: id).cancel()
-        if let idx = jobs.activeJobs.firstIndex(where: { $0.id == id }) {
-            jobs.activeJobs[idx].isPaused = false
-            jobs.activeJobs[idx].isFinished = true
-            jobs.activeJobs[idx].error = "Cancelled"
-            jobs.activeJobs[idx].statusText = String(localized: "Cancelled")
-        }
+        jobs.activeJobs[idx].isPaused = false
+        jobs.activeJobs[idx].isFinished = true
+        jobs.activeJobs[idx].error = "Cancelled"
+        jobs.activeJobs[idx].statusText = String(localized: "Cancelled")
         updateProcessingState()
         
         Task {
@@ -1020,13 +1016,30 @@ public final class AppState: ObservableObject {
     
     private func updateProcessingState() {
         let unfinished = jobs.activeJobs.filter { !$0.isFinished }
-        jobs.isProcessing = !unfinished.isEmpty
+        let newIsProcessing = !unfinished.isEmpty
+        if jobs.isProcessing != newIsProcessing {
+            jobs.isProcessing = newIsProcessing
+        }
+        let newProgress: Double
         if unfinished.isEmpty {
-            jobs.overallProgress = 0.0
+            newProgress = 0.0
         } else {
             let total = unfinished.reduce(0.0) { $0 + $1.progress }
-            jobs.overallProgress = total / Double(unfinished.count)
+            newProgress = total / Double(unfinished.count)
         }
+        if jobs.overallProgress != newProgress {
+            jobs.overallProgress = newProgress
+        }
+    }
+    
+    public func reportNoSupportedFiles(urls: [URL]) {
+        let name: String
+        if let first = urls.first, !first.lastPathComponent.isEmpty {
+            name = urls.count == 1 ? first.lastPathComponent : "\(first.lastPathComponent) (+\(urls.count - 1))"
+        } else {
+            name = String(localized: "No supported files")
+        }
+        recordFailure(fileName: name, message: String(localized: "No supported files"))
     }
     
     /// Keeps failed files visible after their job row disappears, and surfaces the error on the DropBall.
@@ -1082,6 +1095,9 @@ public final class AppState: ObservableObject {
     }
     
     // MARK: - History & Persistence
+    private var historySaveTask: Task<Void, Never>?
+    private var historyDirty = false
+    
     public func recordResult(_ result: CompressionResult) {
         recentResults.insert(result, at: 0)
         if recentResults.count > 50 {
@@ -1101,10 +1117,13 @@ public final class AppState: ObservableObject {
     
     public func clearHistory() {
         recentResults.removeAll()
-        saveHistory()
+        flushHistory()
     }
     
     public func resetAllStats() {
+        historySaveTask?.cancel()
+        historySaveTask = nil
+        historyDirty = false
         totalBytesSaved = 0
         totalOriginalBytes = 0
         totalFilesProcessed = 0
@@ -1116,6 +1135,20 @@ public final class AppState: ObservableObject {
     }
     
     private func saveHistory() {
+        historyDirty = true
+        historySaveTask?.cancel()
+        historySaveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.flushHistory()
+        }
+    }
+    
+    /// Immediately persists `recentResults` if a debounced save is pending (or unconditionally when called directly).
+    public func flushHistory() {
+        historySaveTask?.cancel()
+        historySaveTask = nil
+        historyDirty = false
         if let data = try? JSONEncoder().encode(recentResults) {
             UserDefaults.standard.set(data, forKey: Keys.historyList)
         }

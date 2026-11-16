@@ -8,8 +8,8 @@ SqueezeBar sits quietly in your menu bar (Mac) or system tray (Windows). Drag a 
 
 <p>
   <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar.dmg"><img src="docs/button-macos.svg" alt="Download for macOS" height="56"></a>
-  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-x64.zip"><img src="docs/button-windows-x64.svg" alt="Download for Windows x64" height="56"></a>
-  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/latest/download/SqueezeBar-windows-arm64.zip"><img src="docs/button-windows-arm64.svg" alt="Download for Windows ARM64" height="56"></a>
+  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/download/v1.1.0/SqueezeBar-windows-x64.zip"><img src="docs/button-windows-x64.svg" alt="Download for Windows x64" height="56"></a>
+  <a href="https://github.com/MrBunUniverse/SqueezeBar/releases/download/v1.1.0/SqueezeBar-windows-arm64.zip"><img src="docs/button-windows-arm64.svg" alt="Download for Windows ARM64" height="56"></a>
 </p>
 
 **Mac:** open the download and drag SqueezeBar to Applications. Needs macOS 26 or later. The first time you open it, macOS says it can't check the app for malicious software; choose **Done**, then open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to SqueezeBar.  

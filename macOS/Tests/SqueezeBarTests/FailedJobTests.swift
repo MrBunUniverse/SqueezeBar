@@ -32,10 +32,10 @@ final class ClipboardCleanupTests: XCTestCase {
         let fm = FileManager.default
         let legacy = fm.temporaryDirectory.appendingPathComponent("clipboard_temp_\(UUID().uuidString).png")
         try Data("old screenshot".utf8).write(to: legacy)
-        try fm.createDirectory(at: AppState.clipboardFolder, withIntermediateDirectories: true)
-        try Data("latest".utf8).write(to: AppState.clipboardFolder.appendingPathComponent("Clipboard.png"))
+        let output = fm.temporaryDirectory.appendingPathComponent("clipboard_temp_\(UUID().uuidString)_min.png")
+        try Data("latest".utf8).write(to: output)
         AppState.removeClipboardFiles()
         XCTAssertFalse(fm.fileExists(atPath: legacy.path))
-        XCTAssertFalse(fm.fileExists(atPath: AppState.clipboardFolder.path))
+        XCTAssertFalse(fm.fileExists(atPath: output.path))
     }
 }

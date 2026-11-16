@@ -54,10 +54,10 @@ final class ImageFormatTests: XCTestCase {
             XCTAssertEqual(compressor.determineTargetUTType(for: url, config: config), .jpeg, ext)
         }
         XCTAssertEqual(compressor.outputExtension(for: URL(fileURLWithPath: "/tmp/a.jpeg"), config: config), "jpeg")
-        XCTAssertEqual(compressor.outputExtension(for: URL(fileURLWithPath: "/tmp/a.heif"), config: config), "heic")
+        XCTAssertEqual(compressor.outputExtension(for: URL(fileURLWithPath: "/tmp/a.heif"), config: config), "heif")
     }
 
-    func testWebPChoiceFallsBackToPNGForTransparentImages() throws {
+    func testWebPChoiceFallsBackToAWritableFormatKeepingTransparency() throws {
         try XCTSkipIf(AcceleratedImageCompressor.canWrite(.webP), "this Mac can write WebP")
         XCTAssertFalse(ImageFormatPolicy.available.contains(.webpModern))
         let src = dir.appendingPathComponent("logo.png")
@@ -67,7 +67,8 @@ final class ImageFormatTests: XCTestCase {
         let compressor = AcceleratedImageCompressor()
         let out = dir.appendingPathComponent("logo_min.\(compressor.outputExtension(for: src, config: config))")
         try compressor.compressImage(from: src, to: out, config: config)
-        XCTAssertEqual(out.pathExtension, "png")
-        XCTAssertEqual(written(out).type, UTType.png.identifier)
+        XCTAssertNotEqual(out.pathExtension, "webp")
+        XCTAssertEqual(written(out).type.flatMap { UTType($0) }, UTType(filenameExtension: out.pathExtension))
+        XCTAssertTrue(written(out).alpha)
     }
 }

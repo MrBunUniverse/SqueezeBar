@@ -124,10 +124,10 @@ public struct HardwareAudioCompressor: Sendable {
         
         // ---- Begin Encoding ----
         guard reader.startReading() else {
-            throw AudioCompressorError.encodingFailed("Failed to start audio reader")
+            throw AudioCompressorError.encodingFailed(String(localized: "Failed to start audio reader"))
         }
         guard writer.startWriting() else {
-            throw AudioCompressorError.encodingFailed("Failed to start audio writer")
+            throw AudioCompressorError.encodingFailed(String(localized: "Failed to start audio writer"))
         }
         
         writer.startSession(atSourceTime: .zero)
@@ -207,7 +207,7 @@ private final class AudioEncodingContext: @unchecked Sendable {
                         
                         if !self.writerInput.append(sampleBuffer) {
                             self.writerInput.markAsFinished()
-                            continuation.resume(throwing: HardwareAudioCompressor.AudioCompressorError.encodingFailed("Failed to append audio sample buffer"))
+                            continuation.resume(throwing: HardwareAudioCompressor.AudioCompressorError.encodingFailed(String(localized: "Failed to append audio sample buffer")))
                             return
                         }
                     } else {
@@ -220,7 +220,7 @@ private final class AudioEncodingContext: @unchecked Sendable {
                             } else if let error = self.writer.error {
                                 continuation.resume(throwing: error)
                             } else {
-                                continuation.resume(throwing: HardwareAudioCompressor.AudioCompressorError.encodingFailed("Unknown writer termination"))
+                                continuation.resume(throwing: HardwareAudioCompressor.AudioCompressorError.encodingFailed(String(localized: "Unknown writer termination")))
                             }
                         }
                         return

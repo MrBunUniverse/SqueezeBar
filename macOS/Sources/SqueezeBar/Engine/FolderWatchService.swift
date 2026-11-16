@@ -69,7 +69,7 @@ public final class FolderWatchService: @unchecked Sendable {
             let config = await AppState.shared.currentConfiguration()
             let suffix = MediaCompressionEngine.outputSuffix(config.suffix)
             let candidates = newItems
-                .filter { !$0.hasPrefix(".") && !$0.contains(suffix) && !$0.hasPrefix("clipboard_") }
+                .filter { !Self.shouldSkip(fileName: $0, suffix: suffix) }
                 .map { URL(fileURLWithPath: path).appendingPathComponent($0) }
                 .filter { MediaType.classify(url: $0) != .unsupported }
             guard !candidates.isEmpty else { return }
@@ -79,6 +79,15 @@ public final class FolderWatchService: @unchecked Sendable {
             guard !urlsToProcess.isEmpty, self.isCurrent(generation) else { return }
             await MediaCompressionEngine.shared.processDroppedURLs(urlsToProcess)
         }
+    }
+
+    static func shouldSkip(fileName: String, suffix: String) -> Bool {
+        if fileName.hasPrefix(".") || fileName.hasPrefix("clipboard_") {
+            return true
+        }
+        guard !suffix.isEmpty else { return false }
+        let baseName = (fileName as NSString).deletingPathExtension
+        return baseName.hasSuffix(suffix)
     }
 
     private func isCurrent(_ generation: Int) -> Bool {
