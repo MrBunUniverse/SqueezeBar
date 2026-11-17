@@ -41,6 +41,7 @@ public final class StatusBarController: NSObject, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private var dropView: StatusItemDropView!
     private var popover: NSPopover!
+    private var popoverHost: NSHostingController<HostedPopoverRoot>!
     private var eventMonitor: Any?
     private var dragEventMonitor: Any?
     private var localDragEventMonitor: Any?
@@ -153,10 +154,9 @@ public final class StatusBarController: NSObject, NSPopoverDelegate {
         pop.animates = true
         pop.delegate = self
         
-        let contentView = QuickPopoverView(isDetachedWindow: false)
-            .environmentObject(AppState.shared)
-        
-        pop.contentViewController = NSHostingController(rootView: contentView)
+        // Empty until shown, and emptied again on close: see HostedPopoverRoot.
+        popoverHost = NSHostingController(rootView: HostedPopoverRoot(isDetachedWindow: false, live: false))
+        pop.contentViewController = popoverHost
         self.popover = pop
     }
     
@@ -207,6 +207,7 @@ public final class StatusBarController: NSObject, NSPopoverDelegate {
         guard let button else { return }
         
         if !popover.isShown {
+            if !popoverHost.rootView.live { popoverHost.rootView.live = true }
             popover.behavior = AppState.shared.isPinned ? .applicationDefined : .transient
             let rect = (anchor != nil && sender === button) ? anchor! : button.bounds
             popover.show(relativeTo: rect, of: button, preferredEdge: .minY)
@@ -362,6 +363,8 @@ public final class StatusBarController: NSObject, NSPopoverDelegate {
 
     public func popoverDidClose(_ notification: Notification) {
         removeEventMonitor()
+        // Reopened during the closing animation: keep the content.
+        if !popover.isShown { popoverHost.rootView.live = false }
     }
     
     private func removeEventMonitor() {

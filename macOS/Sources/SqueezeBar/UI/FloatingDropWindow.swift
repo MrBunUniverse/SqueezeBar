@@ -2,11 +2,28 @@ import Foundation
 import AppKit
 import SwiftUI
 
+/// Root of the popover and the detached window. While the window is hidden `live` is false and the
+/// tree is empty, so a hidden window does no SwiftUI work on job updates (same cost as never opened).
+struct HostedPopoverRoot: View {
+    var isDetachedWindow: Bool
+    var live: Bool
+
+    var body: some View {
+        if live {
+            QuickPopoverView(isDetachedWindow: isDetachedWindow)
+                .environmentObject(AppState.shared)
+        } else {
+            Color.clear
+        }
+    }
+}
+
 @MainActor
 public final class FloatingDropWindowController: NSObject, NSWindowDelegate {
     public static let shared = FloatingDropWindowController()
     
     private var floatingPanel: NSPanel?
+    private var hostingView: NSHostingView<HostedPopoverRoot>?
     public var window: NSPanel? { return floatingPanel }
     
     public override init() {
@@ -33,7 +50,9 @@ public final class FloatingDropWindowController: NSObject, NSWindowDelegate {
             panel.title = "SqueezeBar"
             panel.titlebarAppearsTransparent = true
             panel.titleVisibility = .hidden
-            panel.isMovableByWindowBackground = true
+            // Off: AppKit re-walks every SwiftUI responder for drag margins on each job row change.
+            // The header carries a WindowDragHandle instead (QuickPopoverView.headerView).
+            panel.isMovableByWindowBackground = false
             panel.level = .floating
             panel.isFloatingPanel = true
             panel.hidesOnDeactivate = false
@@ -45,16 +64,19 @@ public final class FloatingDropWindowController: NSObject, NSWindowDelegate {
             panel.minSize = NSSize(width: scale.baseWidth - 20, height: scale.baseHeight - 40)
             panel.delegate = self
             
-            let hostingView = NSHostingView(
-                rootView: QuickPopoverView(isDetachedWindow: true)
-                    .environmentObject(AppState.shared)
-            )
+            let hostingView = NSHostingView(rootView: HostedPopoverRoot(isDetachedWindow: true, live: false))
             panel.contentView = hostingView
+            self.hostingView = hostingView
             panel.center()
             self.floatingPanel = panel
         }
         
         AppState.shared.isDetached = true
+        // Build the content before ordering front so the window never shows empty.
+        if hostingView?.rootView.live == false {
+            hostingView?.rootView.live = true
+            hostingView?.layoutSubtreeIfNeeded()
+        }
         floatingPanel?.level = .floating
         floatingPanel?.hidesOnDeactivate = false
         floatingPanel?.makeKeyAndOrderFront(nil)
@@ -63,6 +85,10 @@ public final class FloatingDropWindowController: NSObject, NSWindowDelegate {
     
     private func hide() {
         floatingPanel?.orderOut(nil)
+        if hostingView?.rootView.live == true {
+            hostingView?.rootView.live = false
+            hostingView?.layoutSubtreeIfNeeded()
+        }
     }
     
     public func updateWindowDimensionsForScale(_ scale: UIScaleOption) {

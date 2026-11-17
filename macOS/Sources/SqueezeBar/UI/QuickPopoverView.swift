@@ -74,8 +74,10 @@ public struct QuickPopoverView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) private var colorScheme
     public var isDetachedWindow: Bool = false
-    @State private var selectedTab: PopoverTab = .activity
-    @State private var contentTab: PopoverTab = .activity
+    /// A hidden window drops its SwiftUI tree (HostedPopoverRoot), so the chosen tab is kept here for the reopen.
+    private static var lastTab: PopoverTab = .activity
+    @State private var selectedTab: PopoverTab = QuickPopoverView.lastTab
+    @State private var contentTab: PopoverTab = QuickPopoverView.lastTab
     @State private var tabContentWorkItem: DispatchWorkItem?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isWindowDropTargeted: Bool = false
@@ -314,6 +316,8 @@ public struct QuickPopoverView: View {
                 .font(.system(size: 11, weight: .regular, design: .rounded))
                 .foregroundColor(.secondary)
             }
+            // Static title: let clicks through to the window drag handle behind the header.
+            .allowsHitTesting(false)
             
             Spacer()
             
@@ -360,6 +364,8 @@ public struct QuickPopoverView: View {
         .padding(.trailing, 18)
         .padding(.top, isDetached ? 16 : 14)
         .padding(.bottom, 12)
+        // The detached window is dragged by its header (isMovableByWindowBackground is off, see FloatingDropWindow).
+        .background { if isDetachedWindow { WindowDragHandle() } }
     }
     
     // MARK: - Tab Selector
@@ -385,6 +391,7 @@ public struct QuickPopoverView: View {
     private func selectTab(_ tab: PopoverTab) {
         tabContentWorkItem?.cancel()
         selectedTab = tab
+        Self.lastTab = tab
         let applyContent = {
             withAnimation(.easeInOut(duration: 0.15)) {
                 contentTab = tab
@@ -715,7 +722,7 @@ public struct QuickPopoverView: View {
                                         )
                                     )
                                     .frame(width: max(0, geo.size.width * CGFloat(min(1.0, max(0.0, job.progress)))))
-                                    .animation(.linear(duration: 0.2), value: job.progress)
+                                    .animation(.linear(duration: ProgressGate.minInterval), value: job.progress)
                             }
                         }
                     }
@@ -3242,6 +3249,19 @@ private struct LiveProfileGlowCard<Content: View>: View {
             .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? accentColor.opacity(0.12) : Color.surfaceWhite(0.035, for: colorScheme))
                 .darkControlSurface(RoundedRectangle(cornerRadius: 8), enabled: !isSelected))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isSelected ? accentColor.opacity(0.45) : Color.clear, lineWidth: 0.75))
+    }
+}
+
+// MARK: - AppKit Window Drag Handle (moves the window from clicks no SwiftUI control takes)
+private struct WindowDragHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> HandleView { HandleView() }
+
+    func updateNSView(_ nsView: HandleView, context: Context) {}
+
+    final class HandleView: NSView {
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
     }
 }
 

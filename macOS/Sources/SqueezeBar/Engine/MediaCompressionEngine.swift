@@ -653,17 +653,24 @@ public actor MediaCompressionEngine {
 }
 
 
-/// Encoders report progress per frame; only forward whole-percent changes so the UI isn't invalidated hundreds of times a second.
-private final class ProgressGate: @unchecked Sendable {
+/// Encoders report progress per frame; only forward whole-percent changes, and at most one per `minInterval`,
+/// so the UI isn't invalidated hundreds of times a second. The first report, 0% and 100% always pass.
+final class ProgressGate: @unchecked Sendable {
+    /// Seconds between forwarded reports (10 Hz). The progress animations use the same duration so the bar moves evenly.
+    static let minInterval: TimeInterval = 0.1
+
     private let lock = NSLock()
     private var lastPercent = -1
+    private var lastTime: TimeInterval = 0
 
-    func shouldReport(_ progress: Double) -> Bool {
+    func shouldReport(_ progress: Double, now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Bool {
         let percent = Int(progress * 100)
         lock.lock()
         defer { lock.unlock() }
         guard percent != lastPercent else { return false }
+        guard lastPercent < 0 || percent <= 0 || percent >= 100 || now - lastTime >= Self.minInterval else { return false }
         lastPercent = percent
+        lastTime = now
         return true
     }
 }

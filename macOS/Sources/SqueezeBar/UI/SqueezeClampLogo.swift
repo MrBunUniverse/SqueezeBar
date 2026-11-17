@@ -58,47 +58,154 @@ struct SqueezeWaveMark: View {
     var period: Double = 6.0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The popover and detached window keep their views alive while ordered out, so the timeline
-    /// would tick forever unless paused when the window isn't on screen.
-    @State private var windowVisible = false
 
     var body: some View {
         if reduceMotion {
-            marks(time: nil)
+            restMarks
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !windowVisible)) { context in
-                marks(time: context.date.timeIntervalSinceReferenceDate)
-            }
-            .background(WindowVisibilityReader(isVisible: $windowVisible))
+            // Core Animation runs the sweep in the render server: no SwiftUI updates while it plays.
+            // Inside a GeometryReader like the static marks, so both lay out (and baseline-align) the same.
+            GeometryReader { _ in WaveLayers(mark: self).allowsHitTesting(false) }
         }
     }
 
-    private func marks(time: Double?) -> some View {
+    private var restMarks: some View {
         GeometryReader { proxy in
             let rect = CGRect(origin: .zero, size: proxy.size)
             let shape = SqueezeClampShape()
             ZStack {
                 ForEach(0..<SqueezeClampShape.barCount, id: \.self) { i in
-                    let level = level(forBar: i, time: time)
-                    shape.barPath(i, in: rect)
-                        .fill(base.mix(with: lit, by: level).opacity(restOpacity + (peakOpacity - restOpacity) * level))
+                    shape.barPath(i, in: rect).fill(color(level: 0))
                 }
             }
         }
     }
 
-    /// 0 at rest, 1 when the wave is centred on bar `i`, eased in between.
-    private func level(forBar i: Int, time: Double?) -> Double {
-        guard let time else { return 0 }
+    /// Bar colour for a wave level (0 at rest, 1 at the peak).
+    func color(level: Double) -> Color {
+        base.mix(with: lit, by: level).opacity(restOpacity + (peakOpacity - restOpacity) * level)
+    }
+
+    /// 0 at rest, 1 when the wave is centred on bar `i`, eased in between. `phase` is 0...1 of one period.
+    static func level(forBar i: Int, phase: Double) -> Double {
         let n = Double(SqueezeClampShape.barCount)
         // Wave centre travels from above the first bar to below the last, then rests.
-        let phase = (time.truncatingRemainder(dividingBy: period)) / period
         let sweep = min(phase / 0.75, 1.0)
         let centre = -1.0 + sweep * (n + 1.0)
         let d = abs(Double(i) - centre)
         let width = 1.3
         let t = max(0, 1 - d / width)
         return t * t * (3 - 2 * t)
+    }
+}
+
+/// Hosts `WaveLayerView` and hands it the bar colours sampled along one period.
+private struct WaveLayers: NSViewRepresentable {
+    let mark: SqueezeWaveMark
+
+    func makeNSView(context: Context) -> WaveLayerView { WaveLayerView() }
+
+    func updateNSView(_ view: WaveLayerView, context: Context) {
+        let env = context.environment
+        let key: [AnyHashable] = [mark.base.resolve(in: env), mark.lit.resolve(in: env), mark.restOpacity, mark.peakOpacity, mark.period]
+        guard view.key != key else { return }
+        view.key = key
+        // One keyframe per 1/30 s, the old timeline's frame rate, so the sweep keeps its exact shape.
+        let samples = max(2, Int(mark.period * 30))
+        view.setWave(
+            rest: mark.color(level: 0).resolve(in: env).cgColor,
+            frames: (0..<SqueezeClampShape.barCount).map { bar in
+                (0...samples).map { k in
+                    mark.color(level: SqueezeWaveMark.level(forBar: bar, phase: Double(k) / Double(samples))).resolve(in: env).cgColor
+                }
+            },
+            period: mark.period
+        )
+    }
+}
+
+/// One shape layer per bar with a looping fill-colour animation. The animation is only attached while
+/// the window is on screen, and its start is tied to the wall clock so every mark sweeps in step.
+final class WaveLayerView: NSView {
+    var key: [AnyHashable] = []
+    let bars = (0..<SqueezeClampShape.barCount).map { _ in CAShapeLayer() }
+    private(set) var frames: [[CGColor]] = []
+    private var period = 6.0
+    private var observer: NSObjectProtocol?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        bars.forEach { layer?.addSublayer($0) }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // Same y-down space as the SwiftUI shape.
+    override var isFlipped: Bool { true }
+    // Decorative: clicks and window drags go to whatever is behind.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func setWave(rest: CGColor, frames: [[CGColor]], period: Double) {
+        self.frames = frames
+        self.period = period
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bars.forEach { $0.fillColor = rest }
+        CATransaction.commit()
+        restart()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, bar) in bars.enumerated() {
+            bar.frame = bounds
+            bar.contentsScale = window?.backingScaleFactor ?? 2
+            bar.path = SqueezeClampShape().barPath(i, in: bounds).cgPath
+        }
+        CATransaction.commit()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        observer = nil
+        if let window {
+            observer = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.restart() }
+            }
+        }
+        needsLayout = true
+        restart()
+    }
+
+    private func restart() {
+        bars.forEach { $0.removeAnimation(forKey: "wave") }
+        guard window?.occlusionState.contains(.visible) == true, frames.count == bars.count else { return }
+        let phase = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period)
+        for (bar, colors) in zip(bars, frames) {
+            let wave = CAKeyframeAnimation(keyPath: "fillColor")
+            wave.values = colors
+            wave.duration = period
+            wave.repeatCount = .infinity
+            wave.beginTime = bar.convertTime(CACurrentMediaTime(), from: nil) - phase
+            // A slow glow: 20 fps is plenty and keeps the window compositor mostly idle.
+            wave.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 20)
+            bar.add(wave, forKey: "wave")
+        }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 }
 
@@ -164,7 +271,8 @@ struct SqueezeProgressMark: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: progress)
+        // Progress arrives at most every ProgressGate.minInterval; a linear step of that length keeps the fill moving evenly.
+        .animation(.linear(duration: ProgressGate.minInterval), value: progress)
     }
 }
 
